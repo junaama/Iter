@@ -1,0 +1,8 @@
+.env
+.env*
+
+# Local artifacts
+.DS_Store
+.venv/
+.claude/
+.agents/
