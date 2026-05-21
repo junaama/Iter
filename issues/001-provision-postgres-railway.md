@@ -1,3 +1,12 @@
+---
+type: HITL
+depends-on: []
+---
+
+# HITL — requires interactive Railway login
+
+This issue requires a human to run `railway login` (opens a browser) and `railway link` (interactive project picker). AFK workers should skip this file.
+
 ## Parent PRD
 
 `ARCHITECTURE.md` §9 Step 1 — Data model (and §3 Data layer for context).

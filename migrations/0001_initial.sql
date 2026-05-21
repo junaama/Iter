@@ -1,7 +1,12 @@
--- Iter v1 schema
--- Postgres 16+ with pgvector and pgcrypto extensions
+-- Iter v1 initial schema
+-- Postgres 16+ with pgvector, pgcrypto, and citext extensions
 -- Multi-tenant via Row-Level Security
 -- Hot data: 90 days. Cold archive: Cloudflare R2 via manifest pointers in `archive_pointers`.
+--
+-- This is the canonical schema. `schema.sql` at the repo root has been retired
+-- in favor of versioned migrations. Per CLAUDE.md, shipped migrations are immutable.
+
+-- +goose Up
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 CREATE EXTENSION IF NOT EXISTS vector;
@@ -46,11 +51,11 @@ CREATE TABLE sessions (
   tenant_id           uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
   user_id             uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   parent_session_id   uuid REFERENCES sessions(id) ON DELETE CASCADE,
-  harness             text NOT NULL,           -- 'claude_code','codex','gemini_cli','opencode','pi'
-  model               text NOT NULL,           -- 'claude-opus-4-7','gpt-5-codex', etc
+  harness             text NOT NULL,
+  model               text NOT NULL,
   effort              text CHECK (effort IN ('low','med','high','xhigh','max')),
-  tools               text[] NOT NULL DEFAULT '{}', -- ['chrome','browser_use','computer_use', ...]
-  repo_hash           text,                    -- hashed repo path; null for non-code work
+  tools               text[] NOT NULL DEFAULT '{}',
+  repo_hash           text,
   git_branch          text,
   started_at          timestamptz NOT NULL,
   ended_at            timestamptz,
@@ -58,11 +63,11 @@ CREATE TABLE sessions (
   turn_count          integer,
   total_tokens_in     bigint,
   total_tokens_out    bigint,
-  redacted_prompt     text NOT NULL,           -- first user prompt, trufflehog-stripped
-  redacted_system     text,                    -- system prompt, redacted
+  redacted_prompt     text NOT NULL,
+  redacted_system     text,
   classification      text NOT NULL CHECK (classification IN ('clean','strippable','dirty')),
   ingested_at         timestamptz NOT NULL DEFAULT now(),
-  archived_at         timestamptz              -- set when moved to R2 cold
+  archived_at         timestamptz
 );
 
 CREATE INDEX idx_sessions_tenant_user ON sessions(tenant_id, user_id, started_at DESC);
@@ -103,7 +108,7 @@ CREATE TABLE session_embeddings (
   created_at      timestamptz NOT NULL DEFAULT now()
 );
 
--- HNSW for k-NN; rebuild plan documented when row count > 10M.
+-- HNSW for k-NN; rebuild plan documented when row count > 10M (see ARCHITECTURE.md §8).
 CREATE INDEX idx_embeddings_hnsw ON session_embeddings
   USING hnsw (embedding vector_cosine_ops)
   WITH (m = 16, ef_construction = 64);
@@ -120,7 +125,7 @@ CREATE TABLE session_scores (
   tenant_id       uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
   scorer_version  text NOT NULL,
   composite_score numeric(4,3) NOT NULL CHECK (composite_score BETWEEN 0 AND 1),
-  signals         jsonb NOT NULL,             -- durability, peer_reuse, override_rate, etc
+  signals         jsonb NOT NULL,
   rationale       text,
   contributor_weight numeric(4,3) NOT NULL DEFAULT 0.5 CHECK (contributor_weight BETWEEN 0 AND 1),
   scored_at       timestamptz NOT NULL DEFAULT now()
@@ -141,7 +146,7 @@ CREATE TABLE outcomes (
                     'commit_landed','pr_merged','pr_reverted','code_reverted_within_7d',
                     'tests_passed','tests_failed','incident_caused','peer_referenced'
                   )),
-  external_ref    text,                       -- commit SHA, PR URL, incident ID
+  external_ref    text,
   details         jsonb,
   observed_at     timestamptz NOT NULL DEFAULT now()
 );
@@ -156,11 +161,11 @@ CREATE INDEX idx_outcomes_tenant_type ON outcomes(tenant_id, outcome_type, obser
 CREATE TABLE suggestions (
   id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id       uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-  source_prompt   text NOT NULL,              -- redacted
+  source_prompt   text NOT NULL,
   source_embedding vector(1536) NOT NULL,
   refined_prompt  text NOT NULL,
   rationale       text,
-  evidence_session_ids uuid[] NOT NULL,       -- traces used to derive this suggestion
+  evidence_session_ids uuid[] NOT NULL,
   hit_count       integer NOT NULL DEFAULT 0,
   accept_count    integer NOT NULL DEFAULT 0,
   created_at      timestamptz NOT NULL DEFAULT now(),
@@ -180,11 +185,11 @@ CREATE TABLE stacks (
   id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id       uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
   user_id         uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  name            text NOT NULL,              -- "Ben's stack"
-  harnesses       text[] NOT NULL,            -- ['warp','claude_code','codex_cli']
+  name            text NOT NULL,
+  harnesses       text[] NOT NULL,
   skills          text[] NOT NULL DEFAULT '{}',
-  docs            text[] NOT NULL DEFAULT '{}', -- references the user chose to include
-  notes           text,                       -- free-form, trufflehog-scanned
+  docs            text[] NOT NULL DEFAULT '{}',
+  notes           text,
   classification  text NOT NULL CHECK (classification IN ('clean','strippable','dirty')),
   created_at      timestamptz NOT NULL DEFAULT now(),
   updated_at      timestamptz NOT NULL DEFAULT now()
@@ -195,7 +200,7 @@ CREATE INDEX idx_stacks_user ON stacks(tenant_id, user_id, updated_at DESC);
 CREATE TABLE stack_shares (
   stack_id            uuid NOT NULL REFERENCES stacks(id) ON DELETE CASCADE,
   tenant_id           uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-  shared_with_user_id uuid REFERENCES users(id) ON DELETE CASCADE, -- null = whole tenant team
+  shared_with_user_id uuid REFERENCES users(id) ON DELETE CASCADE,
   shared_at           timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (stack_id, shared_with_user_id)
 );
@@ -209,7 +214,7 @@ CREATE INDEX idx_stack_shares_target ON stack_shares(tenant_id, shared_with_user
 CREATE TABLE archive_pointers (
   session_id      uuid PRIMARY KEY,
   tenant_id       uuid NOT NULL,
-  object_uri      text NOT NULL,           -- r2://iter-archive-prod/<tenant_id>/<session_id>.tar.zst
+  object_uri      text NOT NULL,
   archived_at     timestamptz NOT NULL DEFAULT now()
 );
 
@@ -219,8 +224,8 @@ CREATE TABLE archive_pointers (
 
 CREATE TABLE audit_log (
   id              bigserial PRIMARY KEY,
-  tenant_id       uuid REFERENCES tenants(id) ON DELETE SET NULL, -- nullable for cross-tenant ops
-  actor_user_id   uuid REFERENCES users(id) ON DELETE SET NULL,   -- nullable for system actors
+  tenant_id       uuid REFERENCES tenants(id) ON DELETE SET NULL,
+  actor_user_id   uuid REFERENCES users(id) ON DELETE SET NULL,
   actor_kind      text NOT NULL CHECK (actor_kind IN ('user','admin','system','batch_job')),
   event_type      text NOT NULL CHECK (event_type IN (
                     'tenant_created','tenant_deleted',
@@ -231,8 +236,8 @@ CREATE TABLE audit_log (
                     'permissions_revoked','permissions_granted',
                     'admin_action','data_export_requested','data_deletion_requested'
                   )),
-  target_kind     text,                       -- 'session','user','tenant','stack', etc
-  target_id       text,                       -- not FK; targets may be deleted
+  target_kind     text,
+  target_id       text,
   details         jsonb NOT NULL DEFAULT '{}',
   occurred_at     timestamptz NOT NULL DEFAULT now()
 );
@@ -280,4 +285,39 @@ CREATE POLICY tenant_isolation ON audit_log
 
 -- Bypass role for the nightly scoring batch and the archive job.
 -- Use only with explicit SET ROLE iter_batch; never from the request path.
-CREATE ROLE iter_batch BYPASSRLS;
+-- The dedicated app role (without BYPASSRLS) is created in a later migration.
+-- +goose StatementBegin
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'iter_batch') THEN
+    CREATE ROLE iter_batch BYPASSRLS;
+  END IF;
+END
+$$;
+-- +goose StatementEnd
+
+-- +goose Down
+
+DROP TABLE IF EXISTS audit_log;
+DROP TABLE IF EXISTS archive_pointers;
+DROP TABLE IF EXISTS stack_shares;
+DROP TABLE IF EXISTS stacks;
+DROP TABLE IF EXISTS suggestions;
+DROP TABLE IF EXISTS outcomes;
+DROP TABLE IF EXISTS session_scores;
+DROP TABLE IF EXISTS session_embeddings;
+DROP TABLE IF EXISTS session_events;
+DROP TABLE IF EXISTS sessions;
+DROP TABLE IF EXISTS tenant_users;
+DROP TABLE IF EXISTS users;
+DROP TABLE IF EXISTS tenants;
+-- +goose StatementBegin
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'iter_batch') THEN
+    DROP ROLE iter_batch;
+  END IF;
+END
+$$;
+-- +goose StatementEnd
+-- Extensions intentionally left in place.

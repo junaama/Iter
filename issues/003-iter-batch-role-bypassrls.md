@@ -1,3 +1,9 @@
+---
+type: AFK
+depends-on:
+  - 002-migrations-directory-initial-schema
+---
+
 ## Parent PRD
 
 `ARCHITECTURE.md` §9 Step 1 — Data model. See also `CLAUDE.md` "Locked invariants" — the `iter_batch` role has `BYPASSRLS` and must never be reachable from the request path.

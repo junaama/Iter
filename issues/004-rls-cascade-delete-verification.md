@@ -1,3 +1,10 @@
+---
+type: AFK
+depends-on:
+  - 002-migrations-directory-initial-schema
+  - 003-iter-batch-role-bypassrls
+---
+
 ## Parent PRD
 
 `ARCHITECTURE.md` §9 Step 1 — Data model; §3 "Tenant isolation"; §7 "post-ingestion-leak" failure mode. See also `CLAUDE.md` "Working with `schema.sql`" — deleting a `session_id` must cascade to events, embeddings, scores, and outcomes.

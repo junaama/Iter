@@ -1,3 +1,9 @@
+---
+type: AFK
+depends-on:
+  - 002-migrations-directory-initial-schema
+---
+
 ## Parent PRD
 
 `ARCHITECTURE.md` §9 Step 1 — Data model; §3 "Tables" (HNSW on `session_embeddings`); §8 "pgvector-migration" trigger (rebuild plan at >10M rows).

@@ -1,3 +1,13 @@
+---
+type: HITL
+depends-on:
+  - 001-provision-postgres-railway
+---
+
+# HITL — requires Railway admin actions
+
+This issue executes a destructive operation against a Railway Postgres instance and uses Railway's restore UI/API. AFK workers should skip.
+
 ## Parent PRD
 
 `ARCHITECTURE.md` §9 Step 1 — Data model; §7 reliability ("postgres-down" runbook in Step 7). `deploy.md` for the Railway-centric ops context.

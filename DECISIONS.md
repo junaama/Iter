@@ -108,3 +108,10 @@ The complete decision log from the system design session. Every line is a bindin
 8. UI polish
 
 Details in `ARCHITECTURE.md` §9.
+
+## Implementation decisions
+
+- **Migration runner**: `goose` (v3). Picked over `golang-migrate` because (a) goose uses a single `.sql` file per version with `-- +goose Up`/`Down` markers, matching the `0001_initial.sql` filename called for in `ARCHITECTURE.md` §9; (b) Go-native and importable as a library so the cloud binary can embed migrations and run them on boot; (c) supports `StatementBegin/End` for DO-blocks needed for idempotent role creation. Tracked via the `goose_db_version` table.
+- **Local dev DB**: `pgvector/pgvector:pg16` docker image on port 5433, owned by `make db-up`/`db-down`. Default `DATABASE_URL` points at it; override to target Railway dev.
+- **`schema.sql` retired**: removed from repo root. `migrations/0001_initial.sql` is canonical. Maintaining a parallel snapshot would drift; the migration directory is the source of truth.
+- **`iter_batch` role in initial migration**: kept inline in `0001_initial.sql` (wrapped in an idempotent DO block) to preserve semantic equivalence with the retired `schema.sql`. The application role (without `BYPASSRLS`) plus role-credential separation lands in a follow-up migration per issue 003.

@@ -13,12 +13,13 @@ This is a **design-stage** repository. No application code, build system, tests,
 | `ARCHITECTURE.md` | The spec. Source of truth for v1 scope. When implementation drifts, update the doc. |
 | `DECISIONS.md` | Decision log. Every line is binding; change the doc and the artifact together. |
 | `contracts.py` | Wire types (pydantic). Daemon/CLI/dashboard/webhook boundary. The only place untyped JSON is allowed. |
-| `schema.sql` | Postgres 16 schema with `pgvector`, `pgcrypto`, `citext`. RLS on every tenant-scoped table. |
+| `migrations/` | Versioned Postgres migrations (goose). `0001_initial.sql` is the initial schema — `pgvector`, `pgcrypto`, `citext`, RLS on every tenant-scoped table. |
+| `Makefile` | Migration + local-db helpers (`make db-up`, `make migrate-up`, `make db-verify`). |
 | `deploy.md` | Hosting + env vars + rollback. Railway-centric. |
 | `testing.md` | Test plan (Go-based, not yet implemented). |
 | `DESIGN.md` | Visual language + locked design tokens for the SwiftUI app. Points at the prototype in `design/dashboard-prototype/`. |
 
-Build commands referenced in `testing.md` and `deploy.md` (`make test`, `make mac-release`, `railway up`) **do not work yet** — there is no `Makefile`, no `go.mod`, no Mac app project. Do not run them. If asked to implement, the build order is documented in `ARCHITECTURE.md` §9.
+Build commands referenced in `testing.md` and `deploy.md` (`make test`, `make mac-release`, `railway up`) **do not work yet** — there is no `go.mod`, no Mac app project. Do not run them. The only Makefile targets that work today are the migration helpers documented in `make help`. If asked to implement the rest, the build order is in `ARCHITECTURE.md` §9.
 
 ## Product in one paragraph
 
@@ -59,11 +60,12 @@ This file is the boundary. Any change to a wire type is a breaking change to one
 - Discriminated unions use `Field(discriminator="type")`. Add new WS message types to both the type itself **and** the `ClientMessage`/`ServerMessage` `Union`.
 - The Python file exists because contracts predate the Go implementation. When the Go server is written, mirror these types in `pkg/contracts` (Go). Until then, `contracts.py` is canonical.
 
-## Working with `schema.sql`
+## Working with `migrations/`
 
-- This file is the initial migration. Once the repo gains a `migrations/` directory (planned: `0001_initial.sql`), schema changes go there — never edit a shipped migration.
-- New tenant-scoped tables MUST: include `tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE`, `ALTER TABLE ... ENABLE ROW LEVEL SECURITY`, and a `tenant_isolation` policy using `current_setting('app.current_tenant')::uuid`.
-- HNSW indexes (`session_embeddings`, `suggestions.source_embedding`) use `m=16, ef_construction=64`. Rebuild plan when row count >10M is documented in §8.
+- `migrations/0001_initial.sql` is the initial schema (goose format). Shipped migrations are immutable — schema changes go into a new `migrations/NNNN_<name>.sql` file with `-- +goose Up` and `-- +goose Down` sections.
+- Apply with `make migrate-up` (defaults to local docker via `make db-up`; override `DATABASE_URL` to target Railway). Verify invariants with `make db-verify`.
+- New tenant-scoped tables MUST: include `tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE`, `ALTER TABLE ... ENABLE ROW LEVEL SECURITY`, and a `tenant_isolation` policy using `current_setting('app.current_tenant')::uuid`. Add the table to the verifier in `scripts/verify-migration.sh`.
+- HNSW indexes (`session_embeddings`, `suggestions.source_embedding`) use `m=16, ef_construction=64`. Rebuild plan when row count >10M is documented in `ARCHITECTURE.md` §8.
 - Cascade-delete chain matters for the post-ingestion-leak failure mode: deleting a `session_id` must cascade to events, embeddings, scores, and outcomes. Verify when adding new session-linked tables.
 
 ## Where to look first
