@@ -16,6 +16,10 @@ PG_CONTAINER := iter-pg-dev
 
 .PHONY: help
 help:
+	@echo "Go targets:"
+	@echo "  make test          Run go test ./..."
+	@echo "  make lint          Run golangci-lint run"
+	@echo ""
 	@echo "Migration targets:"
 	@echo "  make db-up         Start a local pgvector/pg16 container (port 5433)"
 	@echo "  make db-down       Stop and remove the local container"
@@ -27,6 +31,14 @@ help:
 	@echo "  make db-verify     Apply migrations and verify schema invariants"
 	@echo ""
 	@echo "DATABASE_URL=$(DATABASE_URL)"
+
+.PHONY: test
+test:
+	go test ./...
+
+.PHONY: lint
+lint:
+	golangci-lint run
 
 .PHONY: db-up
 db-up:
