@@ -39,6 +39,10 @@ help:
 	@echo "Benchmark targets (on-demand, NOT for CI):"
 	@echo "  make bench-hnsw    HNSW 10K-vector baseline (writes benchmarks/hnsw-10k-baseline.md)"
 	@echo ""
+	@echo "Modal targets (nightly scoring batch — stub at v1):"
+	@echo "  make modal-test    Local pytest against modal/scoring.py (no credentials needed)"
+	@echo "  make modal-deploy  Deploy stub to iter-scoring Modal app (requires token)"
+	@echo ""
 	@echo "DATABASE_URL=$(DATABASE_URL)"
 
 .PHONY: test
@@ -129,3 +133,21 @@ test-rls:
 .PHONY: bench-hnsw
 bench-hnsw:
 	@DATABASE_URL="$(DATABASE_URL)" bash scripts/bench-hnsw.sh
+
+# modal-test: local pytest against the Modal scoring stub. Asserts the
+# module imports, the modal.App is real, and the stub return shape is
+# stable. Requires `uv pip install -r modal/requirements.txt` first.
+# Runs from inside modal/ so the test can `import scoring` directly.
+# Does NOT contact Modal; safe to wire into CI.
+.PHONY: modal-test
+modal-test:
+	@cd modal && python -m pytest scoring_test.py -v
+
+# modal-deploy: ships modal/scoring.py to the iter-scoring Modal app.
+# Requires either ~/.modal.toml (from `modal token new`) or
+# MODAL_TOKEN_ID / MODAL_TOKEN_SECRET in the environment.
+# This is the stub deploy; for the real scorer (issue 046) bump
+# min_containers per ARCHITECTURE.md §8 (N=2 warm pool).
+.PHONY: modal-deploy
+modal-deploy:
+	@modal deploy modal/scoring.py

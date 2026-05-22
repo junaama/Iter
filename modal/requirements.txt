@@ -1,0 +1,10 @@
+# Modal Python SDK — pinned for reproducible deploys.
+# Latest at the time of pin: 1.2.6 (May 2026). Bump in lockstep with
+# Modal's release notes; rerun `modal deploy modal/scoring.py` after any
+# bump to catch breaking API changes.
+modal==1.2.6
+
+# Test-only — kept here so a single `uv pip install -r modal/requirements.txt`
+# also sets up `pytest` for `make modal-test`. Move to a split
+# `requirements-dev.txt` if the prod image grows.
+pytest==8.3.3

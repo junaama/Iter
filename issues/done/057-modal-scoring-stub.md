@@ -51,3 +51,38 @@ None — can start immediately (the Go binary doesn't need to call Modal yet).
 ## User stories addressed
 
 Foundation for the nightly scoring batch. Until the real scorer lands in Step 4, the dashboard "first scored session estimated in <X> hours" empty state is the only user-visible touchpoint.
+
+## AFK delivery (this slice)
+
+Shipped:
+
+- `modal/scoring.py` — `modal.App("iter-scoring")` with one `@app.function` (`stub_score`) returning `{session_id, score: 0.0, scorer_version: "v0-stub", ts: <iso8601 UTC>, status: "stub"}`. Image pinned to `debian_slim(python_version="3.12")`. No DB / LLM / Secret use.
+- `modal/requirements.txt` — `modal==1.2.6` + `pytest==8.3.3`.
+- `modal/scoring_test.py` — pytest module that asserts shape and that `scoring.app` is a real `modal.App`. Runs without Modal credentials.
+- `modal/README.md` — uv install + `modal token new` + `modal deploy` walkthrough; explains why the stub does **not** set `min_containers=2`.
+- `Makefile` — `make modal-test` (local pytest from inside `modal/`) and `make modal-deploy` (wraps `modal deploy modal/scoring.py`).
+- `DECISIONS.md` — Modal SDK version pin + Python version + warm-pool deferral rationale recorded under issue 057.
+
+## HITL — deferred to a human operator
+
+These three steps require either a browser session or a billable deploy against the live Iter Modal workspace, so they are intentionally **not** part of this AFK slice. Execute in order from a laptop with `uv pip install -r modal/requirements.txt` already done.
+
+1. **Create the Modal account & generate a token** (browser flow):
+   ```bash
+   modal token new
+   ```
+   This opens the Modal dashboard, prompts you to log in, and writes the token to `~/.modal.toml`. For CI / Railway, copy `MODAL_TOKEN_ID` and `MODAL_TOKEN_SECRET` from the Modal dashboard's Settings → API Tokens page into the per-environment Railway env vars enumerated in `deploy.md` (dev / staging / prod).
+2. **Confirm the `iter-scoring` app is reachable**:
+   ```bash
+   modal app list   # iter-scoring should NOT appear yet — deploy creates it on first run
+   ```
+3. **Deploy the stub** (creates the app on first run; updates it on subsequent runs):
+   ```bash
+   make modal-deploy
+   # or, explicitly:
+   modal deploy modal/scoring.py
+   ```
+   Expected output ends with `App deployed in <region>! 🎉` and a dashboard URL of the form `https://modal.com/apps/<workspace>/main/deployed/iter-scoring`.
+4. **Warm-pool configuration is deferred** to issue 046. Per `ARCHITECTURE.md` §8 and `DECISIONS.md` Phase 8, production runs with `N=2`; the stub deliberately uses the default (`N=0`, on-demand) to avoid burning billable warm-pool minutes for a no-op. The change is a decorator edit (`@app.function(min_containers=2)`) plus a redeploy — no infra ticket needed.
+
+The `modal deploy` smoke-test output (with the dashboard URL redacted if you like) should be pasted into the PR description that closes this issue.
