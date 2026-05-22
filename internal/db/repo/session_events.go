@@ -25,6 +25,13 @@ type SessionEventRow struct {
 	OccurredAt time.Time           `db:"occurred_at"`
 }
 
+// SessionEventCursor is the stable pagination tuple for events ordered by
+// (occurred_at ASC, id ASC).
+type SessionEventCursor struct {
+	OccurredAt time.Time
+	ID         int64
+}
+
 // validEventTypes mirrors the migration's CHECK constraint. Client-side
 // gating turns a typo into a domain error rather than a constraint
 // violation. Kept in sync with pkg/contracts.EventType values — the
@@ -104,6 +111,48 @@ func ListSessionEvents(ctx context.Context, tx pgx.Tx, sessionID uuid.UUID) ([]S
 	`, sessionID)
 	if err != nil {
 		return nil, fmt.Errorf("repo.session_events.list: %w", err)
+	}
+	defer rows.Close()
+	return scanEvents(rows)
+}
+
+// ListSessionEventsPage returns up to limit events after cursor ordered by
+// occurred_at ASC, id ASC. Passing nil cursor returns the first page.
+func ListSessionEventsPage(
+	ctx context.Context,
+	tx pgx.Tx,
+	sessionID uuid.UUID,
+	limit int,
+	cursor *SessionEventCursor,
+) ([]SessionEventRow, error) {
+	if limit <= 0 {
+		limit = 10000
+	}
+
+	var (
+		rows pgx.Rows
+		err  error
+	)
+	if cursor == nil {
+		rows, err = tx.Query(ctx, `
+			SELECT id, session_id, tenant_id, event_type, payload, occurred_at
+			  FROM session_events
+			 WHERE session_id = $1
+			 ORDER BY occurred_at ASC, id ASC
+			 LIMIT $2
+		`, sessionID, limit)
+	} else {
+		rows, err = tx.Query(ctx, `
+			SELECT id, session_id, tenant_id, event_type, payload, occurred_at
+			  FROM session_events
+			 WHERE session_id = $1
+			   AND (occurred_at, id) > ($2, $3)
+			 ORDER BY occurred_at ASC, id ASC
+			 LIMIT $4
+		`, sessionID, cursor.OccurredAt, cursor.ID, limit)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("repo.session_events.list_page: %w", err)
 	}
 	defer rows.Close()
 	return scanEvents(rows)

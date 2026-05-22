@@ -84,6 +84,13 @@ type SessionListRow struct {
 	LatestScore *Score
 }
 
+// SubagentTreeRow is a flat recursive-CTE result. Depth starts at 1 for
+// direct children of the requested root session.
+type SubagentTreeRow struct {
+	Session Session
+	Depth   int
+}
+
 // InsertSession inserts a sessions row. The caller fills in TenantID,
 // UserID, redacted prompts, harness/model/classification, and any
 // optional fields. ID, IngestedAt are server-assigned.
@@ -237,6 +244,58 @@ func ListSubagents(ctx context.Context, tx pgx.Tx, parentID uuid.UUID) ([]Sessio
 	}
 	defer rows.Close()
 	return scanSessions(rows)
+}
+
+// ListSubagentTree returns descendant sessions for rootID using one
+// recursive query. It includes rows through maxDepth and returns
+// truncated=true when at least one deeper descendant exists.
+func ListSubagentTree(ctx context.Context, tx pgx.Tx, rootID uuid.UUID, maxDepth int) ([]SubagentTreeRow, bool, error) {
+	if maxDepth <= 0 {
+		maxDepth = 5
+	}
+	lookaheadDepth := maxDepth + 1
+	rows, err := tx.Query(ctx, `
+		WITH RECURSIVE tree AS (
+			SELECT s.*, 1 AS depth
+			  FROM sessions s
+			 WHERE s.parent_session_id = $1
+			UNION ALL
+			SELECT s.*, tree.depth + 1 AS depth
+			  FROM sessions s
+			  JOIN tree ON s.parent_session_id = tree.id
+			 WHERE tree.depth < $2
+		)
+		SELECT
+		  id, tenant_id, user_id, parent_session_id, harness, model, effort,
+		  tools, repo_hash, git_branch, started_at, ended_at, wall_time_ms,
+		  turn_count, total_tokens_in, total_tokens_out, redacted_prompt,
+		  redacted_system, classification, ingested_at, archived_at, depth
+		  FROM tree
+		 ORDER BY depth ASC, parent_session_id ASC NULLS FIRST, started_at ASC, id ASC
+	`, rootID, lookaheadDepth)
+	if err != nil {
+		return nil, false, fmt.Errorf("repo.sessions.list_subagent_tree: %w", err)
+	}
+	defer rows.Close()
+
+	var out []SubagentTreeRow
+	truncated := false
+	for rows.Next() {
+		var row SubagentTreeRow
+		targets := append(scanSessionTargets(&row.Session), &row.Depth)
+		if err := rows.Scan(targets...); err != nil {
+			return nil, false, fmt.Errorf("repo.sessions list_subagent_tree scan: %w", err)
+		}
+		if row.Depth > maxDepth {
+			truncated = true
+			continue
+		}
+		out = append(out, row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, false, fmt.Errorf("repo.sessions list_subagent_tree iter: %w", err)
+	}
+	return out, truncated, nil
 }
 
 // ListSessions executes the filter under RLS and returns up to limit

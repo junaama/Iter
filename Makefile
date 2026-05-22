@@ -110,10 +110,9 @@ migrate-reset:
 db-verify: migrate-up
 	@scripts/verify-migration.sh "$(DATABASE_URL)"
 
-# test-rls: cross-tenant RLS isolation + cascade-delete invariants AND
-# repository integration tests (issue 051+). Both live under
-# internal/db/... and share the `integration` build tag; running them
-# together saves a container-boot per slice.
+# test-rls: cross-tenant RLS isolation + cascade-delete invariants,
+# repository integration tests (issue 051+), and request-path handler
+# integration tests that assert RLS-visible 404 behavior.
 # Uses testcontainers-go to spin up a fresh pgvector/pg16 container,
 # applies every migration, mints iter_app, then asserts:
 #   - every tenant_id column is enumerated in the test (drift guard)
@@ -137,7 +136,7 @@ test-rls:
 	@sock=$$(docker context inspect --format '{{.Endpoints.docker.Host}}' 2>/dev/null); \
 	DOCKER_HOST=$${DOCKER_HOST:-$$sock} \
 	TESTCONTAINERS_RYUK_DISABLED=true \
-	go test -tags=integration -count=1 -timeout=180s ./internal/db/...
+	go test -tags=integration -count=1 -timeout=180s ./internal/db/... ./internal/api/handler
 
 # test-redis: Redis Streams + DLQ integration tests against a real
 # redis:7-alpine container via testcontainers-go. Same shape as

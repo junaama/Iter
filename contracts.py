@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from enum import Enum
-from typing import Annotated, Literal, Optional, Union
+from typing import Annotated, Any, Literal, Optional, Union
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -255,6 +255,111 @@ class SessionSummary(BaseModel):
     turn_count: Optional[int]
     redacted_prompt: str
     latest_score: Optional[SessionScoreView] = None
+
+
+class SessionDetailRow(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: UUID
+    tenant_id: UUID
+    user_id: UUID
+    parent_session_id: Optional[UUID]
+    harness: Harness
+    model: str
+    effort: Optional[Effort]
+    tools: list[str]
+    repo_hash: Optional[str]
+    git_branch: Optional[str]
+    started_at: datetime
+    ended_at: Optional[datetime]
+    wall_time_ms: Optional[int]
+    turn_count: Optional[int]
+    total_tokens_in: Optional[int]
+    total_tokens_out: Optional[int]
+    redacted_prompt: str
+    redacted_system: Optional[str]
+    classification: Classification
+    ingested_at: datetime
+    archived_at: Optional[datetime]
+
+
+class SessionEventDetail(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: int
+    session_id: UUID
+    tenant_id: UUID
+    event_type: EventType
+    payload: dict[str, Any] = Field(default_factory=dict)
+    occurred_at: datetime
+
+
+class SessionEventsPage(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[SessionEventDetail]
+    next_cursor: Optional[str] = None
+
+
+class SubagentSessionNode(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    session: SessionDetailRow
+    depth: int = Field(ge=1, le=5)
+    children: list["SubagentSessionNode"] = Field(default_factory=list)
+
+
+class SubagentTree(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[SubagentSessionNode]
+    truncated: bool
+
+
+class SessionOutcomeDetail(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: UUID
+    session_id: UUID
+    tenant_id: UUID
+    outcome_type: OutcomeType
+    external_ref: Optional[str] = None
+    details: dict[str, Any] = Field(default_factory=dict)
+    observed_at: datetime
+
+
+class SessionDetailResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    session: SessionDetailRow
+    events: SessionEventsPage
+    subagents: SubagentTree
+    # Outcomes are a sibling array, not joined onto the session row.
+    outcomes: list[SessionOutcomeDetail]
+
+
+class SessionScoreDetail(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: UUID
+    session_id: UUID
+    tenant_id: UUID
+    scorer_version: str
+    composite_score: float = Field(ge=0.0, le=1.0)
+    signals: ScoreSignals
+    contributor_weight: float = Field(ge=0.0, le=1.0)
+    scored_at: datetime
+    rationale: Optional[str] = None
+
+
+class SessionScoresResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    session_id: UUID
+    scores: list[SessionScoreDetail]
+
+
+SubagentSessionNode.model_rebuild()
 
 
 class DashboardUser(BaseModel):

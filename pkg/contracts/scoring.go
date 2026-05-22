@@ -56,6 +56,27 @@ func (s *ScoreSignals) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// MarshalJSON preserves forward-compatible Extra fields when a score row is
+// read from jsonb and sent back through the REST API.
+func (s ScoreSignals) MarshalJSON() ([]byte, error) {
+	type alias ScoreSignals
+	knownJSON, err := json.Marshal(alias(s))
+	if err != nil {
+		return nil, err
+	}
+	fields := map[string]json.RawMessage{}
+	if err := json.Unmarshal(knownJSON, &fields); err != nil {
+		return nil, err
+	}
+	for k, v := range s.Extra {
+		if _, known := scoreSignalsKnownFields[k]; known {
+			continue
+		}
+		fields[k] = v
+	}
+	return json.Marshal(fields)
+}
+
 // CompositeScoreInputs mirrors contracts.py CompositeScoreInputs (extra="forbid").
 // Pure inputs to the scoring function: same inputs → same score.
 type CompositeScoreInputs struct {
