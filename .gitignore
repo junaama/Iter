@@ -6,3 +6,4 @@
 .venv/
 .claude/
 .agents/
+modal/__pycache__/
