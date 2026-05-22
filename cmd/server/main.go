@@ -1,19 +1,17 @@
-// Command server is the single-binary cloud process for Iter. At issue 048
-// it ships the boot spine only: argument-free entry point, structured logger,
-// stdlib HTTP server bound to PORT, SIGTERM/SIGINT graceful shutdown.
+// Command server is the single-binary cloud process for Iter.
 //
-// The full router (chi), middleware chain, /health body, and dependency
-// wiring (pgxpool, redis, WorkOS verifier, Modal client) land in subsequent
-// slices — see internal/app.Deps for the extension points and
-// ARCHITECTURE.md §9 Step 3/4 for the build order. Do not import chi, pgx,
-// or any cloud SDK from this file until those slices land.
+// As of issue 028 it boots the chi router under a *http.Server with the
+// documented timeouts and the full dependency bag. The middleware chain
+// (request_id → logger → recover → auth → tenant_context → rate_limit →
+// idempotency) and handler tree land in subsequent slices (029–047). Until
+// then the router only registers a NotFound handler that returns 503 so
+// any traffic hitting this binary is loud, not silent.
 package main
 
 import (
 	"context"
 	"errors"
 	"log/slog"
-	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -21,6 +19,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/iter-dev/iter/internal/api"
 	"github.com/iter-dev/iter/internal/app"
 	"github.com/iter-dev/iter/internal/db"
 	"github.com/iter-dev/iter/internal/llm"
@@ -102,19 +101,7 @@ func main() {
 		port = defaultPort
 	}
 
-	// Stub mux until issue 028 wires api.NewRouter(deps). The 503 body is
-	// intentional: anything hitting this binary today is misconfigured —
-	// no public surface ships from issue 048.
-	mux := http.NewServeMux()
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		http.Error(w, "iter server skeleton — handlers land in issue 028", http.StatusServiceUnavailable)
-	})
-
-	srv := &http.Server{
-		Addr:              ":" + port,
-		Handler:           mux,
-		ReadHeaderTimeout: 5 * time.Second,
-	}
+	srv := api.NewServer(":"+port, api.NewRouter(deps))
 
 	if err := run(srv, deps); err != nil {
 		logger.Error("server exited with error", "err", err)
@@ -172,21 +159,17 @@ func buildLLMRouter(logger *slog.Logger) *llm.Router {
 // run is split out so it can be unit-tested without exiting the process.
 // It blocks until a SIGTERM/SIGINT arrives, then drains within
 // shutdownTimeout and returns.
-func run(srv *http.Server, deps app.Deps) error {
+func run(srv *api.Server, deps app.Deps) error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
 	errCh := make(chan error, 1)
 	go func() {
 		deps.Logger.Info("server listening",
-			"addr", srv.Addr,
+			"addr", srv.Addr(),
 			"version", deps.BuildVersion,
 		)
-		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			errCh <- err
-			return
-		}
-		errCh <- nil
+		errCh <- srv.Run()
 	}()
 
 	select {
@@ -204,7 +187,7 @@ func run(srv *http.Server, deps app.Deps) error {
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		return err
 	}
-	// Drain the ListenAndServe goroutine so callers don't leak it.
+	// Drain the Run goroutine so callers don't leak it.
 	if err := <-errCh; err != nil {
 		return err
 	}
