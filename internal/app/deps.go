@@ -101,6 +101,14 @@ type Deps struct {
 	// handler.
 	WS *ws.Gateway
 
+	// AuthKit provides the redirect-based login flow (GET /auth/login,
+	// /auth/callback, /auth/logout) that issues the JWTs validated by
+	// deps.Auth. Nil when WORKOS_API_KEY / WORKOS_CLIENT_ID /
+	// WORKOS_REDIRECT_URI are unset — the routes are not registered and
+	// users cannot authenticate via the web UI, only via device-code
+	// flow (daemon/CLI, issue 058+).
+	AuthKit *auth.AuthKit
+
 	// WebhookSecrets bundles the per-source shared secrets used for
 	// HMAC verification by the webhook handlers (issues 041/042).
 	// Unset secrets cause the handler to reject every delivery with

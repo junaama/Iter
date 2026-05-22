@@ -145,6 +145,18 @@ func NewRouter(deps app.Deps) chi.Router {
 		r.Get("/v1/ws", deps.WS.ServeHTTP)
 	}
 
+	// AuthKit login flow routes (GET /auth/login, /auth/callback,
+	// /auth/logout). Lives on the root router outside the authed
+	// Group because these are the endpoints that OBTAIN credentials
+	// in the first place — requiring auth here would be circular.
+	// The routes redirect through WorkOS-hosted pages and set
+	// session cookies on successful authentication. Nil when the
+	// WORKOS_* env vars are incomplete (early bring-up / non-prod
+	// without WorkOS).
+	if deps.AuthKit != nil {
+		deps.AuthKit.RegisterRoutes(r)
+	}
+
 	return r
 }
 

@@ -140,6 +140,14 @@ func main() {
 		Logger:   logger,
 	})
 
+	// Wire the AuthKit login flow (GET /auth/login, /auth/callback,
+	// /auth/logout). These routes obtain the JWTs that deps.Auth
+	// validates. When WORKOS_API_KEY / WORKOS_CLIENT_ID /
+	// WORKOS_REDIRECT_URI are unset, AuthKit is nil and the routes
+	// are not registered — users authenticate via device-code flow
+	// (daemon/CLI) instead.
+	deps.AuthKit = buildAuthKit(logger)
+
 	// Webhook shared secrets (issues 041/042). Each source is verified
 	// against its own secret so a leak of one doesn't compromise the
 	// other. Empty values are accepted at boot but the corresponding
@@ -409,6 +417,39 @@ func buildAuthVerifier(logger *slog.Logger) *auth.Verifier {
 		return nil
 	}
 	return v
+}
+
+// buildAuthKit constructs the WorkOS AuthKit handler from environment
+// variables. Returns nil (with a Warn log) when any of WORKOS_API_KEY,
+// WORKOS_CLIENT_ID, or WORKOS_REDIRECT_URI are unset, so early-bring-up
+// boots before WorkOS is fully provisioned still come up — the login
+// routes are simply not registered, and users authenticate via
+// device-code flow (daemon/CLI) instead.
+func buildAuthKit(logger *slog.Logger) *auth.AuthKit {
+	cfg := auth.AuthKitConfigFromEnv()
+	if err := cfg.Validate(); err != nil {
+		logger.Warn(
+			"WORKOS_* env vars incomplete for AuthKit; login routes will not be registered",
+			"have_api_key", cfg.APIKey != "",
+			"have_client_id", cfg.ClientID != "",
+			"have_redirect_uri", cfg.RedirectURI != "",
+		)
+		return nil
+	}
+	cfg.Logger = logger
+
+	ak, err := auth.NewAuthKit(cfg)
+	if err != nil {
+		// NewAuthKit only errors on missing required fields, which
+		// we already checked above; any error here is a programming
+		// bug rather than a config issue.
+		logger.Error("failed to construct AuthKit; continuing without login routes", "err", err)
+		return nil
+	}
+	logger.Info("AuthKit login routes enabled",
+		"redirect_uri", cfg.RedirectURI,
+	)
+	return ak
 }
 
 // run is split out so it can be unit-tested without exiting the process.
