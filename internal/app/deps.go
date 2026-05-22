@@ -4,8 +4,9 @@
 //
 // Deps is intentionally tiny at issue 048: only what cmd/server itself
 // needs to boot (logger, build version). Later slices grow it:
-//   - issue 049 adds a *pgxpool.Pool (Postgres).
+//   - issue 049 adds *pgxpool.Pool (DB) and BatchDB *pgxpool.Pool.
 //   - issue 050 added a *redis.Client (Redis Streams + cache).
+//   - issue 055 added an *llm.Router (multi-provider LLM).
 //   - issue 056 adds an *auth.Verifier (WorkOS JWT verifier).
 //   - issue 057 adds a *modal.Client (scoring stub).
 //
@@ -15,6 +16,8 @@ package app
 
 import (
 	"log/slog"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/iter-dev/iter/internal/llm"
 
@@ -36,6 +39,24 @@ type Deps struct {
 	// local `go run` builds and renders as "dev" in the health payload.
 	BuildVersion string
 
+	// DB is the request-path Postgres pool, built from $DATABASE_URL
+	// (iter_app role, NOBYPASSRLS). All tenant-scoped queries flow
+	// through db.WithTenant(ctx, DB, tenantID, fn) so that the
+	// `SET LOCAL app.current_tenant` GUC is set inside the same tx as
+	// the query. Required for any handler that touches Postgres;
+	// optional at boot only for cmd/server smoke tests.
+	DB *pgxpool.Pool
+
+	// BatchDB is the BYPASSRLS Postgres pool, built from
+	// $DATABASE_URL_BATCH (iter_batch role). ONLY for cross-tenant
+	// jobs: nightly scoring (issue 046) and archive cron (issue 047).
+	// Never reachable from the request path; cmd/server leaves this
+	// nil today because the Modal worker (per ARCHITECTURE.md §9
+	// Step 4) owns its own connection rather than sharing the server
+	// pool. Reserved here so later wiring slices can populate it
+	// without re-shaping Deps.
+	BatchDB *pgxpool.Pool
+
 	// LLM is the multi-provider router (issue 055). May be nil in tests
 	// that don't exercise the suggest path; handlers that require it
 	// must nil-check and return 503 (mapped to `no_suggestion_reason:
@@ -49,9 +70,6 @@ type Deps struct {
 	// site and return a clear error rather than panicking; cmd/server
 	// logs a warning at boot when REDIS_URL is unset.
 	Redis *goredis.Client
-
-	// Extension points (deferred):
-	//   DB     *pgxpool.Pool     // issue 049
 	//   Auth   *auth.Verifier    // issue 056
 	//   Modal  *modal.Client     // issue 057
 }

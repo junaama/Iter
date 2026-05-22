@@ -19,7 +19,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/iter-dev/iter/internal/app"
+	"github.com/iter-dev/iter/internal/db"
 	"github.com/iter-dev/iter/internal/llm"
 	iredis "github.com/iter-dev/iter/internal/redis"
 	"github.com/iter-dev/iter/pkg/contracts"
@@ -45,10 +48,24 @@ func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	slog.SetDefault(logger)
 
+	// Boot-time DB pool. We give the construction call its own context
+	// with a tight deadline so an unreachable Postgres fails the boot
+	// instead of hanging forever; once running, request contexts carry
+	// per-request deadlines.
+	pool, err := mustNewPool(logger)
+	if err != nil {
+		logger.Error("startup failed: postgres pool", "err", err)
+		os.Exit(1)
+	}
+	defer pool.Close()
+
 	deps := app.Deps{
 		Logger:       logger,
 		BuildVersion: version,
 		LLM:          buildLLMRouter(logger),
+		DB:           pool,
+		// BatchDB left nil — Modal worker (issue 046) owns its own
+		// iter_batch connection.
 	}
 
 	// Wire Redis when REDIS_URL is set; otherwise log and continue with a
@@ -193,4 +210,27 @@ func run(srv *http.Server, deps app.Deps) error {
 	}
 	deps.Logger.Info("server stopped cleanly")
 	return nil
+}
+
+// dbStartupTimeout caps how long boot waits for Postgres to answer the
+// initial ping. Beyond this we exit non-zero and let Railway restart
+// (Postgres is in the same project network, so 10s is generous).
+const dbStartupTimeout = 10 * time.Second
+
+// mustNewPool reads $DATABASE_URL and builds the request-path pgx pool.
+// Returns (nil, error) on any failure — caller exits the process. We
+// deliberately do NOT swallow a missing DATABASE_URL: the binary has no
+// useful behavior without Postgres, and a silent fallback would mask
+// configuration mistakes in CI / Railway.
+func mustNewPool(logger *slog.Logger) (*pgxpool.Pool, error) {
+	dsn := os.Getenv("DATABASE_URL")
+	if dsn == "" {
+		return nil, errors.New("DATABASE_URL is required")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), dbStartupTimeout)
+	defer cancel()
+	return db.NewPool(ctx, db.PoolConfig{
+		DSN:    dsn,
+		Logger: logger,
+	})
 }
