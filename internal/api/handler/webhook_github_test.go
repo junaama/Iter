@@ -29,13 +29,20 @@ import (
 type fakeSink struct {
 	outcomes         []recordedOutcome
 	pending          []repo.PendingOutcome
+	audits           []recordedAudit
 	sessionsByID     map[uuid.UUID]repo.Session
 	sessionsByCommit map[string]repo.Session // key = repoHash + "|" + sha
+	outcomesByRef    map[string]repo.Outcome // key = outcomeType + "|" + externalRef
 }
 
 type recordedOutcome struct {
 	TenantID uuid.UUID
 	Outcome  repo.Outcome
+}
+
+type recordedAudit struct {
+	TenantID uuid.UUID
+	Entry    webhookAuditEntry
 }
 
 func (s *fakeSink) InsertOutcome(_ context.Context, tenantID uuid.UUID, o repo.Outcome) error {
@@ -56,6 +63,21 @@ func (s *fakeSink) LookupBySessionID(_ context.Context, id uuid.UUID) (repo.Sess
 		return sess, nil
 	}
 	return repo.Session{}, pgx.ErrNoRows
+}
+
+func (s *fakeSink) FindOutcomeByTypeRef(_ context.Context, outcomeType, externalRef string) (repo.Outcome, error) {
+	if s.outcomesByRef == nil {
+		return repo.Outcome{}, pgx.ErrNoRows
+	}
+	if outcome, ok := s.outcomesByRef[outcomeType+"|"+externalRef]; ok {
+		return outcome, nil
+	}
+	return repo.Outcome{}, pgx.ErrNoRows
+}
+
+func (s *fakeSink) InsertAudit(_ context.Context, tenantID uuid.UUID, entry webhookAuditEntry) error {
+	s.audits = append(s.audits, recordedAudit{TenantID: tenantID, Entry: entry})
+	return nil
 }
 
 func (s *fakeSink) LookupByRepoCommit(_ context.Context, repoHash, commitSHA string) (repo.Session, error) {

@@ -1,0 +1,19 @@
+{
+  "action": "create",
+  "type": "Issue",
+  "data": {
+    "id": "lin-issue-1",
+    "identifier": "OPS-42",
+    "title": "Production incident from agent run",
+    "url": "https://linear.app/acme/issue/OPS-42/production-incident-from-agent-run",
+    "description": "Regression traced to an agent change.\n\nCloses session: {{SESSION_ID}}",
+    "labels": [
+      { "name": "incident" },
+      { "name": "customer-facing" }
+    ],
+    "state": {
+      "name": "Triage",
+      "type": "started"
+    }
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "action": "create",
+  "type": "Comment",
+  "data": {
+    "id": "lin-comment-1",
+    "body": "Acknowledged in incident review.",
+    "issue": {
+      "id": "lin-issue-1",
+      "identifier": "OPS-42",
+      "url": "https://linear.app/acme/issue/OPS-42/production-incident-from-agent-run"
+    }
+  }
+}

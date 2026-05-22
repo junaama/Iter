@@ -148,6 +148,12 @@ func NewRouter(deps app.Deps) chi.Router {
 	// subrouter in the first place.
 	r.Post("/v1/webhooks/github", handler.GitHubWebhookHandler(deps))
 
+	// POST /v1/webhooks/linear (issue 042) shares the same public
+	// receiver posture as GitHub: no JWT middleware, per-source HMAC
+	// (Linear-Signature), and delivery-id idempotency
+	// (Linear-Delivery) inside the handler.
+	r.Post("/v1/webhooks/linear", handler.LinearWebhookHandler(deps))
+
 	// /v1/ws (issue 043) — WebSocket upgrade for the daemon ↔ cloud
 	// transport. Lives on the root router (outside the authed Group)
 	// because the gateway authenticates BEFORE the upgrade by

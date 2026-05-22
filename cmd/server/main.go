@@ -160,6 +160,9 @@ func main() {
 	if deps.WebhookSecrets.GitHub == "" {
 		logger.Warn("GITHUB_WEBHOOK_SECRET unset; POST /v1/webhooks/github will reject every delivery with 401")
 	}
+	if deps.WebhookSecrets.Linear == "" {
+		logger.Warn("LINEAR_WEBHOOK_SECRET unset; POST /v1/webhooks/linear will reject every delivery with 401")
+	}
 
 	// Archive cron (issue 047). Only starts when BatchDB + the full R2
 	// configuration are all present; any missing piece is a warning,

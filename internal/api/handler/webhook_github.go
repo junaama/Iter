@@ -2,13 +2,11 @@ package handler
 
 import (
 	"context"
-	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"regexp"
@@ -20,6 +18,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	goredis "github.com/redis/go-redis/v9"
 
+	"github.com/iter-dev/iter/internal/api/webhook"
 	"github.com/iter-dev/iter/internal/app"
 	"github.com/iter-dev/iter/internal/db"
 	"github.com/iter-dev/iter/internal/db/repo"
@@ -28,43 +27,15 @@ import (
 // GitHub webhook handler — issue 041.
 //
 // Pipeline:
-//   1. Read raw body (MUST be done before HMAC; we keep up to maxBody).
-//   2. Verify X-Hub-Signature-256 against deps.WebhookSecrets.GitHub
-//      with crypto/hmac.Equal (constant-time). Reject 401 on any
-//      mismatch or missing header; the response body is generic
-//      ("invalid_signature") so an attacker can't tell which check
-//      tripped (ARCHITECTURE.md §7).
-//   3. Idempotency by X-GitHub-Delivery in Redis (24h TTL). Replay
-//      returns 200 + X-Idempotent-Replay: true.
-//   4. Dispatch on X-GitHub-Event. Each branch maps to one of:
+//   1. Shared webhook receiver reads the raw body, verifies
+//      X-Hub-Signature-256, and dedups X-GitHub-Delivery.
+//   2. Dispatch on X-GitHub-Event. Each branch maps to one of:
 //        - outcomes.InsertOutcome (matched session)
 //        - pending_outcomes.InsertPending (unmatched, buffered for the
 //          late-match sweeper)
-//   5. Always 200 on success. 5xx is reserved for genuine internal
+//   3. Always 200 on success. 5xx is reserved for genuine internal
 //      failures GitHub should retry; soft-misses (no matching session)
 //      are 200 + buffered.
-
-// maxWebhookBody caps the body we'll read into memory. GitHub deliveries
-// run ~5-15 KiB; 1 MiB is generous and matches the idempotency
-// middleware's body cap.
-const maxWebhookBody = 1 << 20
-
-// webhookIdempotencyTTL is the window over which we dedup
-// X-GitHub-Delivery values. GitHub redelivers within minutes; 24h gives
-// us a comfortable margin without bloating Redis.
-const webhookIdempotencyTTL = 24 * time.Hour
-
-// errInvalidSignature is the canonical 401 response body. Generic on
-// purpose — never leak which check failed.
-const errInvalidSignature = `{"error":"invalid_signature"}`
-
-// errMalformedBody is returned when the body isn't valid JSON for the
-// event we expect. Only 400 we emit; everything else degrades to 200.
-const errMalformedBody = `{"error":"malformed_body"}`
-
-// errMissingDelivery is the 400 for a request without X-GitHub-Delivery.
-// GitHub always sets it; absence means a misconfigured or hostile sender.
-const errMissingDelivery = `{"error":"missing_delivery_id"}`
 
 // commitMarkerRE matches `Closes session: <uuid>` (case-insensitive) in
 // a commit message. The marker convention is documented in
@@ -101,6 +72,23 @@ type webhookSink interface {
 	// LookupByRepoCommit resolves a session by (repo_hash, commit_sha).
 	// Returns pgx.ErrNoRows on miss.
 	LookupByRepoCommit(ctx context.Context, repoHash, commitSHA string) (repo.Session, error)
+
+	// FindOutcomeByTypeRef resolves an existing outcome by source URL.
+	// Linear uses this to turn an issue's Done transition into an
+	// incident_resolved audit event without mutating the historical
+	// incident_caused outcome.
+	FindOutcomeByTypeRef(ctx context.Context, outcomeType, externalRef string) (repo.Outcome, error)
+
+	// InsertAudit writes a tenant-scoped audit_log row after the
+	// webhook handler has resolved the tenant from a session/outcome.
+	InsertAudit(ctx context.Context, tenantID uuid.UUID, entry webhookAuditEntry) error
+}
+
+type webhookAuditEntry struct {
+	EventType  string
+	TargetKind *string
+	TargetID   *string
+	Details    json.RawMessage
 }
 
 // liveSink is the production implementation of webhookSink. It binds
@@ -110,14 +98,13 @@ type webhookSink interface {
 // the latter under SET LOCAL when the session's tenant is unknown).
 //
 // Note: session lookups in the webhook path happen BEFORE we know the
-// tenant, so we can't use WithTenant. v1 cmd/server doesn't wire
-// deps.BatchDB so the production binding tries the request pool with
-// no SET LOCAL. RLS will hide every row in that state — so production
-// session lookups in the webhook path always miss until either
-// BatchDB is wired or the lookup is moved to a deferred background
-// job (issue 042+). The webhook still does the right thing — it
-// buffers into pending_outcomes — so v1 doesn't lose webhook events;
-// they just don't match in real time.
+// tenant, so we can't use WithTenant. The request path intentionally
+// does not use deps.BatchDB; production lookup attempts therefore run
+// through the app pool with no SET LOCAL. RLS will hide every row in
+// that state until the lookup moves to a deferred background job. The
+// webhook still does the right thing — it buffers into
+// pending_outcomes — so v1 doesn't lose webhook events; they just
+// don't match in real time.
 type liveSink struct {
 	pool *pgxpool.Pool
 }
@@ -180,6 +167,55 @@ func (s *liveSink) LookupByRepoCommit(ctx context.Context, repoHash, commitSHA s
 	return repo.FindByRepoCommit(ctx, tx, repoHash, commitSHA)
 }
 
+func (s *liveSink) FindOutcomeByTypeRef(ctx context.Context, outcomeType, externalRef string) (repo.Outcome, error) {
+	if s.pool == nil {
+		return repo.Outcome{}, errors.New("webhook: db pool not configured")
+	}
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return repo.Outcome{}, fmt.Errorf("webhook.outcome_lookup begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	var out repo.Outcome
+	err = tx.QueryRow(ctx, `
+		SELECT id, session_id, tenant_id, outcome_type, external_ref, details, observed_at
+		  FROM outcomes
+		 WHERE outcome_type = $1
+		   AND external_ref = $2
+		 ORDER BY observed_at DESC
+		 LIMIT 1
+	`, outcomeType, externalRef).Scan(
+		&out.ID, &out.SessionID, &out.TenantID, &out.OutcomeType,
+		&out.ExternalRef, &out.Details, &out.ObservedAt,
+	)
+	if err != nil {
+		return repo.Outcome{}, fmt.Errorf("webhook.outcome_lookup: %w", err)
+	}
+	return out, nil
+}
+
+func (s *liveSink) InsertAudit(ctx context.Context, tenantID uuid.UUID, entry webhookAuditEntry) error {
+	if s.pool == nil {
+		return errors.New("webhook: db pool not configured")
+	}
+	if len(entry.Details) == 0 {
+		entry.Details = json.RawMessage(`{}`)
+	}
+	return db.WithTenant(ctx, s.pool, tenantID.String(), func(ctx context.Context, tx pgx.Tx) error {
+		_, err := tx.Exec(ctx, `
+			INSERT INTO audit_log (
+			  tenant_id, actor_user_id, actor_kind, event_type,
+			  target_kind, target_id, details
+			) VALUES ($1, NULL, 'system', $2, $3, $4, $5)
+		`, tenantID, entry.EventType, entry.TargetKind, entry.TargetID, []byte(entry.Details))
+		if err != nil {
+			return fmt.Errorf("webhook.audit insert: %w", err)
+		}
+		return nil
+	})
+}
+
 // GitHubWebhookHandler returns the HTTP handler mounted at
 // POST /v1/webhooks/github. The handler is constructed with the full
 // app.Deps and reads only the fields it needs at request time so a
@@ -205,109 +241,31 @@ func githubWebhookHandler(
 		now = time.Now
 	}
 
-	return func(w http.ResponseWriter, r *http.Request) {
-		ctx := r.Context()
-
-		// Step 1: read body. Hard-cap to maxWebhookBody so a hostile
-		// sender can't OOM us. Read BEFORE auth so we can HMAC the
-		// exact bytes.
-		body, err := io.ReadAll(io.LimitReader(r.Body, maxWebhookBody+1))
-		if err != nil {
-			logger.WarnContext(ctx, "webhook_read_failed", "err", err)
-			writeWebhookJSON(w, http.StatusBadRequest, errMalformedBody)
-			return
-		}
-		if len(body) > maxWebhookBody {
-			logger.WarnContext(ctx, "webhook_body_too_large", "bytes", len(body))
-			writeWebhookJSON(w, http.StatusRequestEntityTooLarge, `{"error":"body_too_large"}`)
-			return
-		}
-
-		// Step 2: HMAC verify. A missing or malformed secret means the
-		// handler is misconfigured — fail every delivery rather than
-		// accept untrusted input. The check is constant-time.
-		sigHeader := r.Header.Get("X-Hub-Signature-256")
-		if !verifyGitHubSignature(secret, sigHeader, body) {
-			logger.WarnContext(ctx, "webhook_signature_failed",
-				"remote_addr", r.RemoteAddr,
-				"event", r.Header.Get("X-GitHub-Event"),
-				"delivery", r.Header.Get("X-GitHub-Delivery"))
-			writeWebhookJSON(w, http.StatusUnauthorized, errInvalidSignature)
-			return
-		}
-
-		// Step 3: delivery id is required after signature is verified.
-		// (Order matters: signature failure is the first rejection so
-		// the response shape gives nothing away.)
-		deliveryID := r.Header.Get("X-GitHub-Delivery")
-		if deliveryID == "" {
-			writeWebhookJSON(w, http.StatusBadRequest, errMissingDelivery)
-			return
-		}
-
-		// Step 4: idempotency via Redis SETNX. nil Redis fails open —
-		// duplicates flow through but InsertOutcome's dedup keeps the
-		// data clean. Same posture as the idempotency middleware.
-		if rdb != nil {
-			key := "webhook:github:delivery:" + deliveryID
-			set, err := rdb.SetNX(ctx, key, now().UTC().Format(time.RFC3339Nano), webhookIdempotencyTTL).Result()
-			if err != nil {
-				logger.WarnContext(ctx, "webhook_idempotency_redis_failed", "err", err)
-				// fail-open: continue
-			} else if !set {
-				// Hit: same delivery already processed. Respond 200
-				// with a replay marker. We don't cache the body —
-				// GitHub doesn't inspect it; status code + header is
-				// what matters.
-				w.Header().Set("X-Idempotent-Replay", "true")
-				writeWebhookJSON(w, http.StatusOK, `{"status":"ok","replay":true}`)
-				return
-			}
-		}
-
-		// Step 5: dispatch.
-		event := r.Header.Get("X-GitHub-Event")
-		switch event {
-		case "pull_request":
-			handlePullRequest(ctx, logger, sink, body, deliveryID, w)
-		case "push":
-			handlePush(ctx, logger, sink, body, deliveryID, w)
-		case "check_run":
-			handleCheckRun(ctx, logger, sink, body, deliveryID, w)
-		case "ping":
-			// GitHub sends `ping` on webhook creation. Acknowledge.
-			writeWebhookJSON(w, http.StatusOK, `{"status":"pong"}`)
-		default:
-			// Unsupported event: 200 so GitHub doesn't retry, but log.
-			logger.InfoContext(ctx, "webhook_event_ignored", "event", event)
-			writeWebhookJSON(w, http.StatusOK, `{"status":"ignored"}`)
-		}
-	}
-}
-
-// verifyGitHubSignature returns true iff sigHeader is a well-formed
-// `sha256=<hex>` value whose HMAC-SHA256 of body keyed by secret
-// matches in constant time.
-//
-// An empty secret OR an empty header is a fail. We never accept a
-// blank signature on the theory that "no signature is also no
-// signature" — GitHub always sets one when a secret is configured.
-func verifyGitHubSignature(secret, sigHeader string, body []byte) bool {
-	if secret == "" || sigHeader == "" {
-		return false
-	}
-	const prefix = "sha256="
-	if !strings.HasPrefix(sigHeader, prefix) {
-		return false
-	}
-	sig, err := hex.DecodeString(sigHeader[len(prefix):])
-	if err != nil {
-		return false
-	}
-	mac := hmac.New(sha256.New, []byte(secret))
-	mac.Write(body)
-	expected := mac.Sum(nil)
-	return hmac.Equal(sig, expected)
+	return webhook.Handler(webhook.Config{
+		Source:          repo.PendingSourceGitHub,
+		Secret:          secret,
+		SignatureHeader: "X-Hub-Signature-256",
+		SignaturePrefix: "sha256=",
+		DeliveryHeader:  "X-GitHub-Delivery",
+		EventName:       webhook.HeaderEvent("X-GitHub-Event"),
+		Logger:          logger,
+		Redis:           rdb,
+		Now:             now,
+		Routes: map[string]webhook.EventHandler{
+			"pull_request": func(ctx context.Context, d webhook.Delivery) webhook.Response {
+				return handlePullRequest(ctx, logger, sink, d.Body, d.DeliveryID)
+			},
+			"push": func(ctx context.Context, d webhook.Delivery) webhook.Response {
+				return handlePush(ctx, logger, sink, d.Body, d.DeliveryID)
+			},
+			"check_run": func(ctx context.Context, d webhook.Delivery) webhook.Response {
+				return handleCheckRun(ctx, logger, sink, d.Body, d.DeliveryID)
+			},
+			"ping": func(context.Context, webhook.Delivery) webhook.Response {
+				return webhook.JSON(http.StatusOK, `{"status":"pong"}`)
+			},
+		},
+	})
 }
 
 // ---------------------------------------------------------------------------
@@ -348,19 +306,16 @@ func handlePullRequest(
 	sink webhookSink,
 	body []byte,
 	deliveryID string,
-	w http.ResponseWriter,
-) {
+) webhook.Response {
 	var ev githubPullRequestEvent
 	if err := json.Unmarshal(body, &ev); err != nil {
-		writeWebhookJSON(w, http.StatusBadRequest, errMalformedBody)
-		return
+		return webhook.JSON(http.StatusBadRequest, webhook.ErrMalformedBody)
 	}
 
 	// Only `closed` is interesting — open/edited/reviewed don't map to
 	// outcomes at v1.
 	if ev.Action != "closed" {
-		writeWebhookJSON(w, http.StatusOK, `{"status":"ignored"}`)
-		return
+		return webhook.JSON(http.StatusOK, `{"status":"ignored"}`)
 	}
 
 	outcomeType := ""
@@ -371,8 +326,7 @@ func handlePullRequest(
 		outcomeType = repo.OutcomePRReverted
 	default:
 		// PR closed without merge and not a revert: nothing to record.
-		writeWebhookJSON(w, http.StatusOK, `{"status":"ignored"}`)
-		return
+		return webhook.JSON(http.StatusOK, `{"status":"ignored"}`)
 	}
 
 	// Match commit SHA. For merged PRs prefer merge_commit_sha (always
@@ -395,7 +349,7 @@ func handlePullRequest(
 		RawBody:     body,
 	})
 
-	writeWebhookJSON(w, http.StatusOK, `{"status":"ok"}`)
+	return webhook.JSON(http.StatusOK, `{"status":"ok"}`)
 }
 
 type githubPushEvent struct {
@@ -415,12 +369,10 @@ func handlePush(
 	sink webhookSink,
 	body []byte,
 	deliveryID string,
-	w http.ResponseWriter,
-) {
+) webhook.Response {
 	var ev githubPushEvent
 	if err := json.Unmarshal(body, &ev); err != nil {
-		writeWebhookJSON(w, http.StatusBadRequest, errMalformedBody)
-		return
+		return webhook.JSON(http.StatusBadRequest, webhook.ErrMalformedBody)
 	}
 
 	processed := 0
@@ -452,7 +404,7 @@ func handlePush(
 		processed++
 	}
 
-	writeWebhookJSON(w, http.StatusOK, fmt.Sprintf(`{"status":"ok","processed":%d}`, processed))
+	return webhook.JSON(http.StatusOK, fmt.Sprintf(`{"status":"ok","processed":%d}`, processed))
 }
 
 type githubCheckRunEvent struct {
@@ -473,12 +425,10 @@ func handleCheckRun(
 	sink webhookSink,
 	body []byte,
 	deliveryID string,
-	w http.ResponseWriter,
-) {
+) webhook.Response {
 	var ev githubCheckRunEvent
 	if err := json.Unmarshal(body, &ev); err != nil {
-		writeWebhookJSON(w, http.StatusBadRequest, errMalformedBody)
-		return
+		return webhook.JSON(http.StatusBadRequest, webhook.ErrMalformedBody)
 	}
 
 	outcomeType := ""
@@ -490,8 +440,7 @@ func handleCheckRun(
 	default:
 		// Other conclusions (neutral, cancelled, timed_out, action_required,
 		// stale, skipped) don't map to outcomes at v1.
-		writeWebhookJSON(w, http.StatusOK, `{"status":"ignored"}`)
-		return
+		return webhook.JSON(http.StatusOK, `{"status":"ignored"}`)
 	}
 
 	repoHash := hashRepoURL(ev.Repository.HTMLURL)
@@ -508,7 +457,7 @@ func handleCheckRun(
 		RawBody:     body,
 	})
 
-	writeWebhookJSON(w, http.StatusOK, `{"status":"ok"}`)
+	return webhook.JSON(http.StatusOK, `{"status":"ok"}`)
 }
 
 // ---------------------------------------------------------------------------
@@ -619,14 +568,6 @@ func isRevertPR(pr githubPullRequest) bool {
 		}
 	}
 	return false
-}
-
-// writeWebhookJSON writes a JSON response with a fixed content-type.
-// All webhook responses use this so the wire shape stays consistent.
-func writeWebhookJSON(w http.ResponseWriter, status int, body string) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_, _ = io.WriteString(w, body)
 }
 
 // jsonObjectOf builds a one-key JSON object as a string. Tiny utility
