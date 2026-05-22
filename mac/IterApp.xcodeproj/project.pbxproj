@@ -15,6 +15,22 @@
 		1A0000010000000000000006 /* Spacing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000010000000000000016 /* Spacing.swift */; };
 		1A0000010000000000000007 /* Radius.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000010000000000000017 /* Radius.swift */; };
 		1A0000010000000000000008 /* Fonts in Resources */ = {isa = PBXBuildFile; fileRef = 1A0000010000000000000019 /* Fonts */; };
+		1A0000650000000000000001 /* Avatar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000650000000000000011 /* Avatar.swift */; };
+		1A0000650000000000000002 /* ComponentModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000650000000000000012 /* ComponentModels.swift */; };
+		1A0000650000000000000003 /* Harness.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000650000000000000013 /* Harness.swift */; };
+		1A0000650000000000000004 /* IterButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000650000000000000014 /* IterButton.swift */; };
+		1A0000650000000000000005 /* KPITile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000650000000000000015 /* KPITile.swift */; };
+		1A0000650000000000000006 /* OutcomeGrid.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000650000000000000016 /* OutcomeGrid.swift */; };
+		1A0000650000000000000007 /* RailCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000650000000000000017 /* RailCard.swift */; };
+		1A0000650000000000000008 /* Score.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000650000000000000018 /* Score.swift */; };
+		1A0000650000000000000009 /* SearchInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000650000000000000019 /* SearchInput.swift */; };
+		1A000065000000000000000A /* SegmentedControl.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A000065000000000000001A /* SegmentedControl.swift */; };
+		1A000065000000000000000B /* SessionCards.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A000065000000000000001B /* SessionCards.swift */; };
+		1A000065000000000000000C /* SessionFeed.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A000065000000000000001C /* SessionFeed.swift */; };
+		1A000065000000000000000D /* SessionTable.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A000065000000000000001D /* SessionTable.swift */; };
+		1A000065000000000000000E /* Sparkline.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A000065000000000000001E /* Sparkline.swift */; };
+		1A000065000000000000000F /* StatusChip.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A000065000000000000001F /* StatusChip.swift */; };
+		1A0000650000000000000010 /* TraceRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000650000000000000020 /* TraceRow.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -28,6 +44,22 @@
 		1A0000010000000000000017 /* Radius.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Radius.swift; sourceTree = "<group>"; };
 		1A0000010000000000000018 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		1A0000010000000000000019 /* Fonts */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Fonts; sourceTree = "<group>"; };
+		1A0000650000000000000011 /* Avatar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Avatar.swift; sourceTree = "<group>"; };
+		1A0000650000000000000012 /* ComponentModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComponentModels.swift; sourceTree = "<group>"; };
+		1A0000650000000000000013 /* Harness.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Harness.swift; sourceTree = "<group>"; };
+		1A0000650000000000000014 /* IterButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IterButton.swift; sourceTree = "<group>"; };
+		1A0000650000000000000015 /* KPITile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KPITile.swift; sourceTree = "<group>"; };
+		1A0000650000000000000016 /* OutcomeGrid.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OutcomeGrid.swift; sourceTree = "<group>"; };
+		1A0000650000000000000017 /* RailCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RailCard.swift; sourceTree = "<group>"; };
+		1A0000650000000000000018 /* Score.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Score.swift; sourceTree = "<group>"; };
+		1A0000650000000000000019 /* SearchInput.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchInput.swift; sourceTree = "<group>"; };
+		1A000065000000000000001A /* SegmentedControl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SegmentedControl.swift; sourceTree = "<group>"; };
+		1A000065000000000000001B /* SessionCards.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionCards.swift; sourceTree = "<group>"; };
+		1A000065000000000000001C /* SessionFeed.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionFeed.swift; sourceTree = "<group>"; };
+		1A000065000000000000001D /* SessionTable.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionTable.swift; sourceTree = "<group>"; };
+		1A000065000000000000001E /* Sparkline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sparkline.swift; sourceTree = "<group>"; };
+		1A000065000000000000001F /* StatusChip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusChip.swift; sourceTree = "<group>"; };
+		1A0000650000000000000020 /* TraceRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TraceRow.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -55,6 +87,7 @@
 				1A0000010000000000000011 /* IterApp.swift */,
 				1A0000010000000000000012 /* WorkspaceView.swift */,
 				1A0000010000000000000013 /* ThemeStore.swift */,
+				1A0000650000000000000030 /* Components */,
 				1A0000010000000000000032 /* DesignSystem */,
 				1A0000010000000000000033 /* Resources */,
 				1A0000010000000000000018 /* Info.plist */,
@@ -71,6 +104,29 @@
 				1A0000010000000000000017 /* Radius.swift */,
 			);
 			path = DesignSystem;
+			sourceTree = "<group>";
+		};
+		1A0000650000000000000030 /* Components */ = {
+			isa = PBXGroup;
+			children = (
+				1A0000650000000000000011 /* Avatar.swift */,
+				1A0000650000000000000012 /* ComponentModels.swift */,
+				1A0000650000000000000013 /* Harness.swift */,
+				1A0000650000000000000014 /* IterButton.swift */,
+				1A0000650000000000000015 /* KPITile.swift */,
+				1A0000650000000000000016 /* OutcomeGrid.swift */,
+				1A0000650000000000000017 /* RailCard.swift */,
+				1A0000650000000000000018 /* Score.swift */,
+				1A0000650000000000000019 /* SearchInput.swift */,
+				1A000065000000000000001A /* SegmentedControl.swift */,
+				1A000065000000000000001B /* SessionCards.swift */,
+				1A000065000000000000001C /* SessionFeed.swift */,
+				1A000065000000000000001D /* SessionTable.swift */,
+				1A000065000000000000001E /* Sparkline.swift */,
+				1A000065000000000000001F /* StatusChip.swift */,
+				1A0000650000000000000020 /* TraceRow.swift */,
+			);
+			path = Components;
 			sourceTree = "<group>";
 		};
 		1A0000010000000000000033 /* Resources */ = {
@@ -165,6 +221,22 @@
 				1A0000010000000000000005 /* Typography.swift in Sources */,
 				1A0000010000000000000006 /* Spacing.swift in Sources */,
 				1A0000010000000000000007 /* Radius.swift in Sources */,
+				1A0000650000000000000001 /* Avatar.swift in Sources */,
+				1A0000650000000000000002 /* ComponentModels.swift in Sources */,
+				1A0000650000000000000003 /* Harness.swift in Sources */,
+				1A0000650000000000000004 /* IterButton.swift in Sources */,
+				1A0000650000000000000005 /* KPITile.swift in Sources */,
+				1A0000650000000000000006 /* OutcomeGrid.swift in Sources */,
+				1A0000650000000000000007 /* RailCard.swift in Sources */,
+				1A0000650000000000000008 /* Score.swift in Sources */,
+				1A0000650000000000000009 /* SearchInput.swift in Sources */,
+				1A000065000000000000000A /* SegmentedControl.swift in Sources */,
+				1A000065000000000000000B /* SessionCards.swift in Sources */,
+				1A000065000000000000000C /* SessionFeed.swift in Sources */,
+				1A000065000000000000000D /* SessionTable.swift in Sources */,
+				1A000065000000000000000E /* Sparkline.swift in Sources */,
+				1A000065000000000000000F /* StatusChip.swift in Sources */,
+				1A0000650000000000000010 /* TraceRow.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
