@@ -18,6 +18,7 @@ package db
 
 import (
 	"context"
+	"errors"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -40,6 +41,10 @@ type ctxKey struct{}
 
 var txKey = ctxKey{}
 
+// ErrNoTx means no pgx.Tx has been bound to the context by WithTenant or
+// WithBatch. Request handlers should map it as an internal wiring failure.
+var ErrNoTx = errors.New("db: no transaction in context")
+
 // withTx returns a child context carrying tx. Internal to this package;
 // WithTenant and WithBatch call it before invoking the user's fn.
 func withTx(ctx context.Context, tx pgx.Tx) context.Context {
@@ -57,13 +62,23 @@ func FromContext(ctx context.Context) pgx.Tx {
 	return nil
 }
 
+// RequireTx returns the active pgx.Tx or a typed error when the caller forgot
+// to enter the request/batch transaction wrapper.
+func RequireTx(ctx context.Context) (pgx.Tx, error) {
+	tx := FromContext(ctx)
+	if tx == nil {
+		return nil, ErrNoTx
+	}
+	return tx, nil
+}
+
 // Querier returns the active pgx.Tx for ctx. Panics if no tx is bound —
 // callers must wrap their work in WithTenant or WithBatch. The panic is
 // intentional: silently falling through to a pool here would let a
 // repository function bypass RLS without the caller noticing.
 func Querier(ctx context.Context) QuerierIface {
-	tx := FromContext(ctx)
-	if tx == nil {
+	tx, err := RequireTx(ctx)
+	if err != nil {
 		panic("db.Querier: no tx in context — wrap call in db.WithTenant or db.WithBatch")
 	}
 	return tx

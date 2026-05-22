@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"time"
 
 	"github.com/google/uuid"
@@ -46,8 +45,7 @@ func decodeSessionsCursor(raw string) (time.Time, uuid.UUID, error) {
 	if err := dec.Decode(&payload); err != nil {
 		return time.Time{}, uuid.Nil, fmt.Errorf("decode cursor json: %w", err)
 	}
-	var trailing struct{}
-	if err := dec.Decode(&trailing); err != io.EOF {
+	if dec.InputOffset() != int64(len(data)) {
 		return time.Time{}, uuid.Nil, errors.New("decode cursor json: trailing data")
 	}
 	startedAt, err := time.Parse(time.RFC3339Nano, payload.StartedAt)

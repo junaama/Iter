@@ -5,6 +5,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/iter-dev/iter/internal/api/authz"
 	"github.com/iter-dev/iter/internal/api/handler"
 	"github.com/iter-dev/iter/internal/api/middleware"
 	"github.com/iter-dev/iter/internal/app"
@@ -80,6 +81,10 @@ func NewRouter(deps app.Deps) chi.Router {
 				middleware.WithTenantSkip("/v1/webhooks"),
 				middleware.WithTenantLogger(deps.Logger),
 			),
+			// Authz (admin cache) — installs a per-request cache for
+			// tenant_users role checks. Route gates and handlers that
+			// branch on admin status call the same DB-backed helper.
+			authz.AdminCache,
 			// RateLimit (032) — per-token sliding-window limiter
 			// keyed by JWT jti. Sits after auth so the Principal
 			// (TokenID + TokenType) is on the context, and before

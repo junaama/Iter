@@ -2,7 +2,6 @@ package handler
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -13,6 +12,8 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/iter-dev/iter/internal/api/authz"
+	"github.com/iter-dev/iter/internal/api/respond"
 	"github.com/iter-dev/iter/internal/app"
 	"github.com/iter-dev/iter/internal/db"
 	"github.com/iter-dev/iter/internal/db/repo"
@@ -24,70 +25,43 @@ const (
 	maxSessionsLimit     = 100
 )
 
-var errSessionsDBUnavailable = errors.New("sessions: db transaction unavailable")
-
-type sessionSummaryLister interface {
-	ListSessionSummaries(
-		r *http.Request,
-		filter repo.SessionSummaryFilter,
-		limit int,
-		cursorStartedAt time.Time,
-		cursorID uuid.UUID,
-	) ([]repo.SessionListRow, error)
-}
-
-type liveSessionSummaryLister struct{}
-
-func (liveSessionSummaryLister) ListSessionSummaries(
-	r *http.Request,
-	filter repo.SessionSummaryFilter,
-	limit int,
-	cursorStartedAt time.Time,
-	cursorID uuid.UUID,
-) ([]repo.SessionListRow, error) {
-	tx := db.FromContext(r.Context())
-	if tx == nil {
-		return nil, errSessionsDBUnavailable
-	}
-	return repo.ListSessionSummaries(r.Context(), tx, filter, limit, cursorStartedAt, cursorID)
-}
-
 // ListSessionsHandler returns the GET /v1/sessions handler.
 func ListSessionsHandler(deps app.Deps) http.HandlerFunc {
-	return listSessionsHandler(deps.Logger, liveSessionSummaryLister{})
+	return listSessionsHandler(deps.Logger)
 }
 
-func listSessionsHandler(logger *slog.Logger, lister sessionSummaryLister) http.HandlerFunc {
-	if logger == nil {
-		logger = slog.Default()
-	}
-	if lister == nil {
-		lister = liveSessionSummaryLister{}
-	}
-
+func listSessionsHandler(logger *slog.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		principal, err := contracts.RequireAuth(r.Context())
 		if err != nil {
-			writeAPIJSON(w, http.StatusUnauthorized, apiError{Error: "invalid_token"})
+			respond.JSON(w, http.StatusUnauthorized, respond.Error{Error: "invalid_token"})
 			return
 		}
 
-		filter, limit, cursorStartedAt, cursorID, qerr := parseListSessionsQuery(r.URL.Query(), principal)
-		if qerr != nil {
-			writeAPIJSON(w, qerr.status, qerr.body)
-			return
-		}
-
-		rows, err := lister.ListSessionSummaries(r, filter, limit+1, cursorStartedAt, cursorID)
+		admin, err := authz.IsAdmin(r.Context())
 		if err != nil {
-			status := http.StatusInternalServerError
-			body := apiError{Error: "internal_error"}
-			if errors.Is(err, errSessionsDBUnavailable) {
-				status = http.StatusServiceUnavailable
-				body = apiError{Error: "db_unavailable"}
-			}
+			logger.ErrorContext(r.Context(), "sessions_admin_lookup_failed", "err", err)
+			respond.JSON(w, http.StatusInternalServerError, respond.Error{Error: "internal_error"})
+			return
+		}
+
+		filter, limit, cursorStartedAt, cursorID, qerr := parseListSessionsQuery(r.URL.Query(), principal, admin)
+		if qerr != nil {
+			respond.JSON(w, qerr.status, qerr.body)
+			return
+		}
+
+		tx, err := db.RequireTx(r.Context())
+		if err != nil {
+			logger.ErrorContext(r.Context(), "sessions_missing_tenant_tx", "err", err)
+			respond.JSON(w, http.StatusInternalServerError, respond.Error{Error: "internal_error"})
+			return
+		}
+
+		rows, err := repo.ListSessionSummaries(r.Context(), tx, filter, limit+1, cursorStartedAt, cursorID)
+		if err != nil {
 			logger.ErrorContext(r.Context(), "sessions_list_failed", "err", err)
-			writeAPIJSON(w, status, body)
+			respond.JSON(w, http.StatusInternalServerError, respond.Error{Error: "internal_error"})
 			return
 		}
 
@@ -99,7 +73,7 @@ func listSessionsHandler(logger *slog.Logger, lister sessionSummaryLister) http.
 		sessions, err := mapSessionSummaries(rows)
 		if err != nil {
 			logger.ErrorContext(r.Context(), "sessions_list_map_failed", "err", err)
-			writeAPIJSON(w, http.StatusInternalServerError, apiError{Error: "internal_error"})
+			respond.JSON(w, http.StatusInternalServerError, respond.Error{Error: "internal_error"})
 			return
 		}
 
@@ -109,38 +83,231 @@ func listSessionsHandler(logger *slog.Logger, lister sessionSummaryLister) http.
 			next, err := encodeSessionsCursor(last.StartedAt, last.ID)
 			if err != nil {
 				logger.ErrorContext(r.Context(), "sessions_cursor_encode_failed", "err", err)
-				writeAPIJSON(w, http.StatusInternalServerError, apiError{Error: "internal_error"})
+				respond.JSON(w, http.StatusInternalServerError, respond.Error{Error: "internal_error"})
 				return
 			}
 			resp.NextCursor = &next
 		}
-		writeAPIJSON(w, http.StatusOK, resp)
+		respond.JSON(w, http.StatusOK, resp)
 	}
-}
-
-type apiError struct {
-	Error   string   `json:"error"`
-	Details []string `json:"details,omitempty"`
-	See     string   `json:"see,omitempty"`
 }
 
 type queryError struct {
 	status int
-	body   apiError
+	body   respond.Error
 }
 
-func parseListSessionsQuery(values url.Values, principal contracts.Principal) (repo.SessionSummaryFilter, int, time.Time, uuid.UUID, *queryError) {
-	admin := principalHasAdminRole(principal)
-	filter := repo.SessionSummaryFilter{}
-	limit := defaultSessionsLimit
-	var details []string
+func parseListSessionsQuery(
+	values url.Values,
+	principal contracts.Principal,
+	admin bool,
+) (repo.SessionSummaryFilter, int, time.Time, uuid.UUID, *queryError) {
+	rawParams, details, qerr := collectListSessionsParams(values)
+	if qerr != nil {
+		return repo.SessionSummaryFilter{}, 0, time.Time{}, uuid.Nil, qerr
+	}
 
-	for name := range values {
+	state := listSessionsQueryState{
+		principal: principal,
+		admin:     admin,
+		limit:     defaultSessionsLimit,
+		details:   details,
+	}
+	for _, spec := range listSessionsParamSpecs {
+		raw, ok := rawParams[spec.name]
+		if !ok {
+			continue
+		}
+		spec.parse(&state, raw)
+		if state.qerr != nil {
+			return state.filter, 0, time.Time{}, uuid.Nil, state.qerr
+		}
+	}
+	state.validateRanges()
+	state.applyRoleDefaults()
+
+	if len(state.details) > 0 {
+		return state.filter, 0, time.Time{}, uuid.Nil, &queryError{
+			status: http.StatusBadRequest,
+			body: respond.Error{
+				Error:   "invalid_query",
+				Details: state.details,
+			},
+		}
+	}
+
+	return state.filter, state.limit, state.cursorStartedAt, state.cursorID, nil
+}
+
+type listSessionsQueryState struct {
+	principal       contracts.Principal
+	admin           bool
+	filter          repo.SessionSummaryFilter
+	limit           int
+	cursorStartedAt time.Time
+	cursorID        uuid.UUID
+	details         []string
+	qerr            *queryError
+}
+
+func (s *listSessionsQueryState) validateRanges() {
+	if s.filter.StartedAfter != nil && s.filter.StartedBefore != nil &&
+		!s.filter.StartedAfter.Before(*s.filter.StartedBefore) {
+		s.details = append(s.details, "started_after must be before started_before")
+	}
+	if s.filter.MinScore != nil && s.filter.MaxScore != nil && *s.filter.MinScore > *s.filter.MaxScore {
+		s.details = append(s.details, "min_score must be less than or equal to max_score")
+	}
+}
+
+func (s *listSessionsQueryState) applyRoleDefaults() {
+	if s.admin {
+		return
+	}
+	userID := s.principal.UserID
+	s.filter.UserID = &userID
+	if s.filter.Classification == nil {
+		s.filter.ExcludeDirty = true
+	}
+}
+
+type listSessionsParamSpec struct {
+	name  string
+	parse func(*listSessionsQueryState, string)
+}
+
+var listSessionsParamSpecs = []listSessionsParamSpec{
+	{
+		name: "limit",
+		parse: func(s *listSessionsQueryState, raw string) {
+			n, err := strconv.Atoi(raw)
+			if err != nil || n <= 0 {
+				s.details = append(s.details, "limit must be a positive integer")
+			} else if n > maxSessionsLimit {
+				s.limit = maxSessionsLimit
+			} else {
+				s.limit = n
+			}
+		},
+	},
+	{
+		name: "user_id",
+		parse: func(s *listSessionsQueryState, raw string) {
+			if !s.admin {
+				return
+			}
+			id, err := uuid.Parse(raw)
+			if err != nil {
+				s.details = append(s.details, "user_id must be a UUID")
+				return
+			}
+			s.filter.UserID = &id
+		},
+	},
+	{
+		name: "harness",
+		parse: func(s *listSessionsQueryState, raw string) {
+			if !contracts.ValidHarness(raw) {
+				s.details = append(s.details, "harness must be one of claude_code, codex, pi, opencode, gemini_cli")
+				return
+			}
+			s.filter.Harness = &raw
+		},
+	},
+	{
+		name: "started_after",
+		parse: func(s *listSessionsQueryState, raw string) {
+			t, err := time.Parse(time.RFC3339Nano, raw)
+			if err != nil {
+				s.details = append(s.details, "started_after must be an RFC3339 timestamp")
+				return
+			}
+			s.filter.StartedAfter = &t
+		},
+	},
+	{
+		name: "started_before",
+		parse: func(s *listSessionsQueryState, raw string) {
+			t, err := time.Parse(time.RFC3339Nano, raw)
+			if err != nil {
+				s.details = append(s.details, "started_before must be an RFC3339 timestamp")
+				return
+			}
+			s.filter.StartedBefore = &t
+		},
+	},
+	{
+		name: "min_score",
+		parse: func(s *listSessionsQueryState, raw string) {
+			score, err := parseScoreParam("min_score", raw)
+			if err != nil {
+				s.details = append(s.details, err.Error())
+				return
+			}
+			s.filter.MinScore = &score
+		},
+	},
+	{
+		name: "max_score",
+		parse: func(s *listSessionsQueryState, raw string) {
+			score, err := parseScoreParam("max_score", raw)
+			if err != nil {
+				s.details = append(s.details, err.Error())
+				return
+			}
+			s.filter.MaxScore = &score
+		},
+	},
+	{
+		name: "has_outcome",
+		parse: func(s *listSessionsQueryState, raw string) {
+			if !contracts.ValidOutcomeType(raw) {
+				s.details = append(s.details, "has_outcome must be a supported outcome type")
+				return
+			}
+			s.filter.HasOutcome = &raw
+		},
+	},
+	{
+		name: "classification",
+		parse: func(s *listSessionsQueryState, raw string) {
+			if !contracts.ValidClassification(raw) {
+				s.details = append(s.details, "classification must be one of clean, strippable, dirty")
+				return
+			}
+			if raw == string(contracts.ClassificationDirty) && !s.admin {
+				s.qerr = &queryError{
+					status: http.StatusForbidden,
+					body:   respond.Error{Error: "dirty_sessions_admin_only"},
+				}
+				return
+			}
+			s.filter.Classification = &raw
+		},
+	},
+	{
+		name: "cursor",
+		parse: func(s *listSessionsQueryState, raw string) {
+			startedAt, id, err := decodeSessionsCursor(raw)
+			if err != nil {
+				s.details = append(s.details, "cursor is invalid")
+				return
+			}
+			s.cursorStartedAt = startedAt
+			s.cursorID = id
+		},
+	},
+}
+
+func collectListSessionsParams(values url.Values) (map[string]string, []string, *queryError) {
+	rawParams := make(map[string]string, len(values))
+	var details []string
+	for name, vals := range values {
 		lower := strings.ToLower(name)
 		if _, ok := nlSearchParams[lower]; ok {
-			return filter, 0, time.Time{}, uuid.Nil, &queryError{
+			return nil, nil, &queryError{
 				status: http.StatusBadRequest,
-				body: apiError{
+				body: respond.Error{
 					Error: "nl_search_not_supported",
 					See:   "ARCHITECTURE.md#anti-screens",
 				},
@@ -148,159 +315,32 @@ func parseListSessionsQuery(values url.Values, principal contracts.Principal) (r
 		}
 		if _, ok := allowedSessionsParams[lower]; !ok {
 			details = append(details, fmt.Sprintf("unsupported query parameter %q", name))
-		}
-	}
-
-	getOne := func(name string) (string, bool) {
-		vals, ok := values[name]
-		if !ok {
-			return "", false
+			continue
 		}
 		if len(vals) != 1 {
-			details = append(details, fmt.Sprintf("%s must appear at most once", name))
-			return "", false
+			details = append(details, fmt.Sprintf("%s must appear at most once", lower))
+			continue
 		}
 		if vals[0] == "" {
-			details = append(details, fmt.Sprintf("%s must not be empty", name))
-			return "", false
+			details = append(details, fmt.Sprintf("%s must not be empty", lower))
+			continue
 		}
-		return vals[0], true
-	}
-
-	if raw, ok := getOne("limit"); ok {
-		n, err := strconv.Atoi(raw)
-		if err != nil || n <= 0 {
-			details = append(details, "limit must be a positive integer")
-		} else if n > maxSessionsLimit {
-			limit = maxSessionsLimit
-		} else {
-			limit = n
+		if _, exists := rawParams[lower]; exists {
+			details = append(details, fmt.Sprintf("%s must appear at most once", lower))
+			continue
 		}
+		rawParams[lower] = vals[0]
 	}
-
-	if admin {
-		if raw, ok := getOne("user_id"); ok {
-			id, err := uuid.Parse(raw)
-			if err != nil {
-				details = append(details, "user_id must be a UUID")
-			} else {
-				filter.UserID = &id
-			}
-		}
-	} else {
-		userID := principal.UserID
-		filter.UserID = &userID
-	}
-
-	if raw, ok := getOne("harness"); ok {
-		if !contracts.ValidHarness(raw) {
-			details = append(details, "harness must be one of claude_code, codex, pi, opencode, gemini_cli")
-		} else {
-			filter.Harness = &raw
-		}
-	}
-
-	if raw, ok := getOne("started_after"); ok {
-		t, err := time.Parse(time.RFC3339Nano, raw)
-		if err != nil {
-			details = append(details, "started_after must be an RFC3339 timestamp")
-		} else {
-			filter.StartedAfter = &t
-		}
-	}
-	if raw, ok := getOne("started_before"); ok {
-		t, err := time.Parse(time.RFC3339Nano, raw)
-		if err != nil {
-			details = append(details, "started_before must be an RFC3339 timestamp")
-		} else {
-			filter.StartedBefore = &t
-		}
-	}
-	if filter.StartedAfter != nil && filter.StartedBefore != nil &&
-		!filter.StartedAfter.Before(*filter.StartedBefore) {
-		details = append(details, "started_after must be before started_before")
-	}
-
-	if raw, ok := getOne("min_score"); ok {
-		score, err := parseScoreParam("min_score", raw)
-		if err != nil {
-			details = append(details, err.Error())
-		} else {
-			filter.MinScore = &score
-		}
-	}
-	if raw, ok := getOne("max_score"); ok {
-		score, err := parseScoreParam("max_score", raw)
-		if err != nil {
-			details = append(details, err.Error())
-		} else {
-			filter.MaxScore = &score
-		}
-	}
-	if filter.MinScore != nil && filter.MaxScore != nil && *filter.MinScore > *filter.MaxScore {
-		details = append(details, "min_score must be less than or equal to max_score")
-	}
-
-	if raw, ok := getOne("has_outcome"); ok {
-		if !contracts.ValidOutcomeType(raw) {
-			details = append(details, "has_outcome must be a supported outcome type")
-		} else {
-			filter.HasOutcome = &raw
-		}
-	}
-
-	if raw, ok := getOne("classification"); ok {
-		if !contracts.ValidClassification(raw) {
-			details = append(details, "classification must be one of clean, strippable, dirty")
-		} else if raw == string(contracts.ClassificationDirty) && !admin {
-			return filter, 0, time.Time{}, uuid.Nil, &queryError{
-				status: http.StatusForbidden,
-				body:   apiError{Error: "dirty_sessions_admin_only"},
-			}
-		} else {
-			filter.Classification = &raw
-		}
-	} else if !admin {
-		filter.ExcludeDirty = true
-	}
-
-	var cursorStartedAt time.Time
-	var cursorID uuid.UUID
-	if raw, ok := getOne("cursor"); ok {
-		startedAt, id, err := decodeSessionsCursor(raw)
-		if err != nil {
-			details = append(details, "cursor is invalid")
-		} else {
-			cursorStartedAt = startedAt
-			cursorID = id
-		}
-	}
-
-	if len(details) > 0 {
-		return filter, 0, time.Time{}, uuid.Nil, &queryError{
-			status: http.StatusBadRequest,
-			body: apiError{
-				Error:   "invalid_query",
-				Details: details,
-			},
-		}
-	}
-
-	return filter, limit, cursorStartedAt, cursorID, nil
+	return rawParams, details, nil
 }
 
-var allowedSessionsParams = map[string]struct{}{
-	"user_id":        {},
-	"harness":        {},
-	"started_after":  {},
-	"started_before": {},
-	"min_score":      {},
-	"max_score":      {},
-	"has_outcome":    {},
-	"classification": {},
-	"cursor":         {},
-	"limit":          {},
-}
+var allowedSessionsParams = func() map[string]struct{} {
+	out := make(map[string]struct{}, len(listSessionsParamSpecs))
+	for _, spec := range listSessionsParamSpecs {
+		out[spec.name] = struct{}{}
+	}
+	return out
+}()
 
 var nlSearchParams = map[string]struct{}{
 	"q":      {},
@@ -314,16 +354,6 @@ func parseScoreParam(name, raw string) (float64, error) {
 		return 0, fmt.Errorf("%s must be a number between 0 and 1", name)
 	}
 	return score, nil
-}
-
-func principalHasAdminRole(principal contracts.Principal) bool {
-	for _, role := range principal.Roles {
-		switch strings.ToLower(role) {
-		case repo.RoleOwner, repo.RoleAdmin, "tenant_owner", "tenant_admin":
-			return true
-		}
-	}
-	return false
 }
 
 func mapSessionSummaries(rows []repo.SessionListRow) ([]contracts.SessionSummary, error) {
@@ -384,11 +414,4 @@ func mapSessionScoreView(score repo.Score) (contracts.SessionScoreView, error) {
 		ScoredAt:          score.ScoredAt,
 		Rationale:         score.Rationale,
 	}, nil
-}
-
-func writeAPIJSON(w http.ResponseWriter, status int, body any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Cache-Control", "no-store")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(body)
 }

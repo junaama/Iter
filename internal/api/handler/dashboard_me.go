@@ -1,8 +1,6 @@
 package handler
 
 import (
-	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -10,9 +8,9 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/iter-dev/iter/internal/api/respond"
 	"github.com/iter-dev/iter/internal/app"
 	"github.com/iter-dev/iter/internal/db"
 	"github.com/iter-dev/iter/internal/db/repo"
@@ -28,87 +26,54 @@ const (
 	dashboardDateLayout = "2006-01-02"
 )
 
-var errDashboardNoTx = errors.New("dashboard/me: tenant transaction missing")
-
-type dashboardMeStore interface {
-	LoadDashboardMe(ctx context.Context, userID uuid.UUID, days int, limit int, now time.Time) (repo.DashboardMe, error)
-}
-
-type liveDashboardMeStore struct{}
-
-func (liveDashboardMeStore) LoadDashboardMe(
-	ctx context.Context,
-	userID uuid.UUID,
-	days int,
-	limit int,
-	now time.Time,
-) (repo.DashboardMe, error) {
-	tx := db.FromContext(ctx)
-	if tx == nil {
-		return repo.DashboardMe{}, errDashboardNoTx
-	}
-	return repo.LoadDashboardMe(ctx, tx, userID, days, limit, now)
-}
-
 // DashboardMeHandler returns the HTTP handler mounted at GET /v1/dashboard/me.
 func DashboardMeHandler(deps app.Deps) http.HandlerFunc {
-	return dashboardMeHandler(deps.Logger, liveDashboardMeStore{}, time.Now)
+	return dashboardMeHandler(deps.Logger, time.Now)
 }
 
 func dashboardMeHandler(
 	logger *slog.Logger,
-	store dashboardMeStore,
 	now func() time.Time,
 ) http.HandlerFunc {
-	if logger == nil {
-		logger = slog.Default()
-	}
-	if store == nil {
-		store = liveDashboardMeStore{}
-	}
-	if now == nil {
-		now = time.Now
-	}
-
 	return func(w http.ResponseWriter, r *http.Request) {
 		principal, err := contracts.RequireAuth(r.Context())
 		if err != nil {
-			writeDashboardJSON(w, http.StatusUnauthorized, dashboardError{Error: "unauthenticated"})
+			respond.JSON(w, http.StatusUnauthorized, respond.Error{Error: "unauthenticated"})
 			return
 		}
 
 		days, err := boundedPositiveInt(r, "days", defaultDashboardMeDays, maxDashboardMeDays)
 		if err != nil {
-			writeDashboardJSON(w, http.StatusBadRequest, dashboardError{Error: "invalid_query"})
+			respond.JSON(w, http.StatusBadRequest, respond.Error{Error: "invalid_query"})
 			return
 		}
 		limit, err := boundedPositiveInt(r, "limit", defaultDashboardMeLimit, maxDashboardMeLimit)
 		if err != nil {
-			writeDashboardJSON(w, http.StatusBadRequest, dashboardError{Error: "invalid_query"})
+			respond.JSON(w, http.StatusBadRequest, respond.Error{Error: "invalid_query"})
 			return
 		}
 
-		me, err := store.LoadDashboardMe(r.Context(), principal.UserID, days, limit, now().UTC())
+		tx, err := db.RequireTx(r.Context())
+		if err != nil {
+			logger.ErrorContext(r.Context(), "dashboard_me_missing_tenant_tx")
+			respond.JSON(w, http.StatusInternalServerError, respond.Error{Error: "internal"})
+			return
+		}
+
+		me, err := repo.LoadDashboardMe(r.Context(), tx, principal.UserID, days, limit, now().UTC())
 		if err != nil {
 			switch {
 			case errors.Is(err, pgx.ErrNoRows):
-				writeDashboardJSON(w, http.StatusNotFound, dashboardError{Error: "user_not_found"})
-			case errors.Is(err, errDashboardNoTx):
-				logger.ErrorContext(r.Context(), "dashboard_me_missing_tenant_tx")
-				writeDashboardJSON(w, http.StatusInternalServerError, dashboardError{Error: "internal"})
+				respond.JSON(w, http.StatusNotFound, respond.Error{Error: "user_not_found"})
 			default:
 				logger.ErrorContext(r.Context(), "dashboard_me_load_failed", "err", err)
-				writeDashboardJSON(w, http.StatusInternalServerError, dashboardError{Error: "internal"})
+				respond.JSON(w, http.StatusInternalServerError, respond.Error{Error: "internal"})
 			}
 			return
 		}
 
-		writeDashboardJSON(w, http.StatusOK, dashboardMeResponse(me))
+		respond.JSON(w, http.StatusOK, dashboardMeResponse(me))
 	}
-}
-
-type dashboardError struct {
-	Error string `json:"error"`
 }
 
 func boundedPositiveInt(r *http.Request, key string, def int, max int) (int, error) {
@@ -156,11 +121,4 @@ func dashboardMeResponse(me repo.DashboardMe) contracts.DashboardMeResponse {
 		Trend:          trend,
 		RecentSessions: recent,
 	}
-}
-
-func writeDashboardJSON(w http.ResponseWriter, status int, body any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Cache-Control", "no-store")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(body)
 }

@@ -17,6 +17,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/pgvector/pgvector-go"
 
+	"github.com/iter-dev/iter/internal/api/authz"
 	"github.com/iter-dev/iter/internal/api/handler"
 	"github.com/iter-dev/iter/internal/api/middleware"
 	"github.com/iter-dev/iter/internal/app"
@@ -144,7 +145,7 @@ func serveDashboardTeam(
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	h := handler.DashboardTeamHandler(app.Deps{Logger: logger})
 	chain := middleware.Tenant(tdb.AppPool, middleware.WithTenantLogger(logger))(
-		requireAdmin(logger)(h),
+		authz.AdminCache(requireAdmin(logger)(h)),
 	)
 	req := httptest.NewRequest(http.MethodGet, path, nil)
 	req = req.WithContext(contracts.WithPrincipal(req.Context(), principal))
