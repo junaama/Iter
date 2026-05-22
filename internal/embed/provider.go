@@ -80,3 +80,9 @@ var ErrProviderNotImplemented = errors.New("embed: provider not implemented")
 // unavailable" — queue with backoff, session viewable but not searchable
 // until embedding lands.
 var ErrAllProvidersUnavailable = errors.New("embed: all providers unavailable")
+
+// ErrRateLimited is returned by providers when the upstream responds with a
+// rate-limit signal (HTTP 429). The embedding worker treats it differently
+// from ordinary provider failures: the whole batch is re-queued at the tail
+// for tenant fairness, without burning per-message retry attempts.
+var ErrRateLimited = errors.New("embed: provider rate limited")

@@ -121,6 +121,8 @@ db-verify: migrate-up
 #   - deleting a tenant cascades to its FK-CASCADE dependents
 #   - the table repositories (tenants, users, tenant_users, sessions,
 #     session_events) satisfy their CRUD + RLS + cascade contracts
+#   - the embedding worker persists session_embeddings through RLS while
+#     consuming embed:queue from Redis
 # Requires Docker. ~40s on a warm cache (each repo test spins its own
 # container per the dbtest helper).
 # Gated behind the `integration` build tag so it never runs in
@@ -136,7 +138,7 @@ test-rls:
 	@sock=$$(docker context inspect --format '{{.Endpoints.docker.Host}}' 2>/dev/null); \
 	DOCKER_HOST=$${DOCKER_HOST:-$$sock} \
 	TESTCONTAINERS_RYUK_DISABLED=true \
-	go test -tags=integration -count=1 -timeout=180s ./internal/db/... ./internal/api/handler ./internal/ingest
+	go test -tags=integration -count=1 -timeout=180s ./internal/db/... ./internal/api/handler ./internal/ingest ./internal/embed
 
 # test-redis: Redis Streams + DLQ integration tests against a real
 # redis:7-alpine container via testcontainers-go. Same shape as

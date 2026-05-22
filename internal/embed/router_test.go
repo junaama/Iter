@@ -49,6 +49,23 @@ func TestRouterFallsThroughOnError(t *testing.T) {
 	}
 }
 
+func TestRouterReturnsRateLimitWithoutFallback(t *testing.T) {
+	first := &stubProvider{name: "a", failWith: ErrRateLimited}
+	second := &stubProvider{name: "b"}
+	r := NewRouter(RouterConfig{
+		Providers: []Provider{first, second},
+		Priority:  []string{"a", "b"},
+	})
+
+	_, err := r.Embed(context.Background(), simpleReq())
+	if !errors.Is(err, ErrRateLimited) {
+		t.Fatalf("error = %v, want ErrRateLimited", err)
+	}
+	if second.Calls() != 0 {
+		t.Errorf("second provider was called after rate limit; calls=%d want 0", second.Calls())
+	}
+}
+
 func TestRouterAllUnavailableReturnsSentinel(t *testing.T) {
 	first := &stubProvider{name: "a", failWith: errors.New("boom")}
 	second := &stubProvider{name: "b", failWith: errors.New("boom")}

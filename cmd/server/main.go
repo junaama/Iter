@@ -184,6 +184,10 @@ func main() {
 	if ingestCancel != nil {
 		defer ingestCancel()
 	}
+	embedCancel := startEmbedWorker(logger, deps.DB, deps.Redis, deps.Embed)
+	if embedCancel != nil {
+		defer embedCancel()
+	}
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -224,6 +228,32 @@ func startIngestWorker(logger *slog.Logger, pool *pgxpool.Pool, redisClient *gor
 		return nil
 	}
 	logger.Info("ingest worker started", "count", count, "consumer", worker.ConsumerName())
+	return cancel
+}
+
+func startEmbedWorker(logger *slog.Logger, pool *pgxpool.Pool, redisClient *goredis.Client, router *embed.Router) context.CancelFunc {
+	if redisClient == nil {
+		logger.Warn("embed worker not started: Redis unavailable")
+		return nil
+	}
+	if router == nil {
+		logger.Warn("embed worker not started: embedding router unavailable")
+		return nil
+	}
+	worker, err := embed.NewWorker(embed.WorkerConfig{
+		DB:       pool,
+		Redis:    redisClient,
+		Embedder: router,
+		Logger:   logger,
+		Count:    embed.CountFromEnv(),
+	})
+	if err != nil {
+		logger.Error("embed worker construction failed; not starting", "err", err)
+		return nil
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	worker.Start(ctx)
+	logger.Info("embed worker started", "count", embed.CountFromEnv())
 	return cancel
 }
 

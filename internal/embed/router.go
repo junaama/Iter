@@ -131,6 +131,9 @@ func (r *Router) Embed(ctx context.Context, req EmbedRequest) (EmbedResponse, er
 		resp, err := p.Embed(ctx, req)
 		if err != nil {
 			b.failure()
+			if errors.Is(err, ErrRateLimited) {
+				return EmbedResponse{}, fmt.Errorf("%s: %w", name, ErrRateLimited)
+			}
 			attempts = append(attempts, fmt.Sprintf("%s:%s", name, errorTag(err)))
 			continue
 		}

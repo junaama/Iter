@@ -128,6 +128,9 @@ func (p *VoyageProvider) Embed(ctx context.Context, req EmbedRequest) (EmbedResp
 		// Drain a bounded snippet for the log; never surface raw bytes
 		// to the user.
 		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		if resp.StatusCode == http.StatusTooManyRequests {
+			return EmbedResponse{}, fmt.Errorf("voyage: http %d: %s: %w", resp.StatusCode, string(snippet), ErrRateLimited)
+		}
 		return EmbedResponse{}, fmt.Errorf("voyage: http %d: %s", resp.StatusCode, string(snippet))
 	}
 

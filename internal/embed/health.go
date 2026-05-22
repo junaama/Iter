@@ -39,3 +39,22 @@ func (r *Router) HealthSnapshot() map[string]ProviderStatus {
 	}
 	return out
 }
+
+// CircuitOpen reports whether every registered provider in the router is
+// currently short-circuited by its breaker. The embedding worker uses this
+// before BLPOP so a transient provider outage pauses queue consumption rather
+// than draining work into retry/DLQ churn.
+func (r *Router) CircuitOpen() bool {
+	r.mu.RLock()
+	providers := append([]Provider(nil), r.providers...)
+	r.mu.RUnlock()
+	if len(providers) == 0 {
+		return false
+	}
+	for _, p := range providers {
+		if r.breakers[p.Name()].snapshot() != BreakerOpen {
+			return false
+		}
+	}
+	return true
+}
