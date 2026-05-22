@@ -1,0 +1,5 @@
+From: Jane Doe <jane.doe@example.com>
+To: support@example.org
+Phone: (555) 123-4567
+Alt phone: +1-555-987-6543
+Body: Please contact me at jane.doe@example.com or 555.222.3333.
