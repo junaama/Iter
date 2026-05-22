@@ -209,8 +209,7 @@ class StackResponse(BaseModel):
 class StackShareRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    # null target = share with whole tenant team
-    shared_with_user_id: Optional[UUID] = None
+    shared_with_user_id: UUID
 
 
 # ============================================================================

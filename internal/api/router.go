@@ -105,6 +105,12 @@ func NewRouter(deps app.Deps) chi.Router {
 			middleware.Idempotency(deps.Redis, deps.Logger),
 		)
 
+		authed.Get("/v1/stack/me", handler.StackMeHandler(deps))
+		authed.Get("/v1/stack/{user_id}", handler.StackUserHandler(deps))
+		authed.Post("/v1/stack", handler.StackCreateHandler(deps))
+		authed.Post("/v1/stack/{id}/share", handler.StackShareHandler(deps))
+		authed.Delete("/v1/stack/{id}/share/{user_id}", handler.StackUnshareHandler(deps))
+
 		authed.Get("/v1/dashboard/me", handler.DashboardMeHandler(deps))
 		authed.Get("/v1/sessions/{id}", handler.SessionDetailHandler(deps))
 		authed.Get("/v1/scores/{session_id}", handler.SessionScoresHandler(deps))

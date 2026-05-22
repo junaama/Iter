@@ -34,15 +34,15 @@ Revoke a share. Logs `stack_unshared`.
 
 ## Acceptance criteria
 
-- [ ] All 5 endpoints registered with correct middleware chain (POSTs include idempotency)
-- [ ] Classification path verified: `dirty` body → 422 with `{"error":"classification_failed","tier":"dirty"}`
-- [ ] Env-var heuristic catches a string like `OPENAI_API_KEY=sk-...` even when trufflehog misses it (test fixture)
-- [ ] Cross-tenant share returns 422 with `{"error":"cross_tenant_share_forbidden"}`
-- [ ] Cross-tenant `GET /v1/stack/:user_id` returns 404 (don't leak existence)
-- [ ] Audit-log entries written for share / unshare (verify in test against the `audit_log` table)
-- [ ] Wire types added to `pkg/contracts/` mirroring `contracts.py`
-- [ ] Integration tests cover happy paths + every failure mode
-- [ ] `make test` + `make test-rls` + `make lint` pass
+- [x] All 5 endpoints registered with correct middleware chain (POSTs include idempotency)
+- [x] Classification path verified: `dirty` body → 422 with `{"error":"classification_failed","tier":"dirty"}`
+- [x] Env-var heuristic catches a string like `OPENAI_API_KEY=sk-...` even when trufflehog misses it (test fixture)
+- [x] Cross-tenant share returns 422 with `{"error":"cross_tenant_share_forbidden"}`
+- [x] Cross-tenant `GET /v1/stack/:user_id` returns 404 (don't leak existence)
+- [x] Audit-log entries written for share / unshare (verify in test against the `audit_log` table)
+- [x] Wire types added to `pkg/contracts/` mirroring `contracts.py`
+- [x] Integration tests cover happy paths + every failure mode
+- [x] `make test` + `make test-rls` + `make lint` pass
 
 ## Blocked by
 
