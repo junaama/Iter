@@ -190,7 +190,7 @@ TestFlight: revoke the build. Public download: replace the .dmg on iter.dev/down
 
 ### Data rollback
 
-Postgres PITR (point-in-time recovery) is enabled on the managed DB. Maximum recovery point: 1 hour ago. Restore procedure documented in `runbooks/postgres-pitr-restore.md`.
+**Postgres PITR (deferred):** Railway's point-in-time-recovery is gated to the Pro plan. The v1 deployment runs on the free Hobby plan, which only retains daily snapshots managed by Railway. The PITR drill (issue `006`) is deferred to whenever revenue or enterprise pilots justify the Pro upgrade — track in `issues/deferred/006-pitr-backup-restore-drill.md`. Until then, the rollback story for Postgres is "restore the most recent Railway snapshot" (manual, accept up to ~24h loss). Re-enable the drill and re-evaluate the 1h recovery target stated in `ARCHITECTURE.md` §7 as part of the Pro-plan migration.
 
 R2 archive: versioning enabled. Restore a previous version with `wrangler` or any S3-compatible client pointed at `$R2_ENDPOINT`:
 

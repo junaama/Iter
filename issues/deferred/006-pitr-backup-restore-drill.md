@@ -1,10 +1,22 @@
 ---
-type: HITL
+type: deferred
 depends-on:
   - 001-provision-postgres-railway
+deferred-reason: railway-pro-plan-required
+deferred-on: 2026-05-21
 ---
 
-# HITL — requires Railway admin actions
+# DEFERRED — requires Railway Pro plan
+
+PITR (point-in-time recovery) is a paid Railway feature; v1 runs on the Hobby plan. This drill is on hold until revenue / enterprise pilots justify the Pro upgrade. Track here; re-evaluate the 1h recovery target in `ARCHITECTURE.md` §7 ("Database corruption") at upgrade time. Until then, the fallback rollback story is "restore the most recent Railway daily snapshot" (manual, ~24h loss accepted).
+
+`once.sh` does not glob `issues/deferred/*.md`, so no worker will pick this up.
+
+When un-deferring: move this file back to `issues/`, flip the frontmatter `type:` back to `HITL`, and remove the deferred-* keys.
+
+---
+
+# Original HITL framing (preserved verbatim below)
 
 This issue executes a destructive operation against a Railway Postgres instance and uses Railway's restore UI/API. AFK workers should skip.
 

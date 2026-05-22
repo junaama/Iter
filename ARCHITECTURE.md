@@ -248,7 +248,7 @@ No NL search across team sessions. No public profile pages. No leaderboard as a 
 | Noisy-neighbor tenant | Per-tenant rate limit at the gateway; p99 capped at 10x median. |
 | Webhook delivery delayed | Best-effort; outcomes attach when they arrive. Idempotency-Key dedup. |
 | Scoring bug at scale | `scorer_version` column enables rollback; UI shows "scored by vN." |
-| Database corruption | Postgres PITR enabled; max acceptable loss = 1h. |
+| Database corruption | Postgres PITR is the v1.x target (max acceptable loss = 1h); **deferred at v1** because PITR requires the Railway Pro plan and v1 runs on Hobby. Until upgrade, fallback is the daily snapshot Railway retains on Hobby (accept ~24h loss). Re-enable + re-evaluate the 1h target when scaling. See `issues/deferred/006-pitr-backup-restore-drill.md`. |
 | Mac app / daemon version drift | Daemon refuses to start on major-version mismatch; prompts update. |
 | macOS permissions revoked mid-session | Daemon detects, pauses capture, surfaces in menubar. |
 | Tenant deleted (admin action) | Cascade-delete; R2 archives purged within 24h; audit log entry. |
@@ -305,7 +305,7 @@ All five monitored in BetterStack from v1 launch.
 The build sequence. Each item is small enough to be a single PR or one focused session.
 
 ### Step 1 — Data model
-Provision Postgres 16+ on Railway. Verify pgvector, pgcrypto, citext extensions. Run `schema.sql`. Create `iter_batch` role; verify BYPASSRLS. Set up `migrations/` directory starting at `0001_initial.sql`. Insert sample rows; verify cascade-delete and RLS isolation per table. Build HNSW on 10K random vectors; record build time and recall. Verify PITR backup + restore procedure.
+Provision Postgres 16+ on Railway. Verify pgvector, pgcrypto, citext extensions. Run `schema.sql`. Create `iter_batch` role; verify BYPASSRLS. Set up `migrations/` directory starting at `0001_initial.sql`. Insert sample rows; verify cascade-delete and RLS isolation per table. Build HNSW on 10K random vectors; record build time and recall. ~~Verify PITR backup + restore procedure.~~ (PITR drill deferred until Railway Pro plan upgrade — see `issues/deferred/006-pitr-backup-restore-drill.md` and §7 row "Database corruption.")
 
 ### Step 2 — Tests for business logic
 Pure scoring function with property and table-driven tests. Suggestion decision function with threshold-boundary tests. Classification function (trufflehog wrapper) with secrets corpus + PII corpus + idempotency + determinism tests. Signal aggregation tests (ordering independence, idempotency on duplicate events). Dangerous-pattern deny-list tests.
