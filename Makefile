@@ -128,6 +128,17 @@ test-rls:
 	TESTCONTAINERS_RYUK_DISABLED=true \
 	go test -tags=integration -count=1 -timeout=180s ./internal/db/...
 
+# test-redis: Redis Streams + DLQ integration tests against a real
+# redis:7-alpine container via testcontainers-go. Same shape as
+# test-rls — Docker socket probe + RYUK disabled. Gated behind the
+# `integration` build tag so it never runs in `make test`.
+.PHONY: test-redis
+test-redis:
+	@sock=$$(docker context inspect --format '{{.Endpoints.docker.Host}}' 2>/dev/null); \
+	DOCKER_HOST=$${DOCKER_HOST:-$$sock} \
+	TESTCONTAINERS_RYUK_DISABLED=true \
+	go test -tags=integration -count=1 -timeout=180s ./internal/redis/...
+
 # bench-hnsw: 10K-vector HNSW baseline for `session_embeddings`. On-demand
 # only — explicitly NOT wired into CI. See issue 005 + ARCHITECTURE.md §8.
 # Set DATABASE_URL to the Railway public URL for prod-hardware numbers.
