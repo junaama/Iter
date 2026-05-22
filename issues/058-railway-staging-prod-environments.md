@@ -1,12 +1,12 @@
 ---
-type: HITL
+type: AFK
 depends-on:
   - 001-provision-postgres-railway
 ---
 
-# HITL — requires interactive Railway operations
+# AFK — Railway CLI provisioning
 
-This issue requires `railway login` (browser), `railway environment` creation, and provisioning Postgres + Redis services per environment. AFK workers should skip it.
+This issue is CLI-ready now that `railway` is authenticated in the terminal. Workers may use the Railway CLI to create/link environments and services, set non-secret or already-provided variables, run migrations, and verify RLS. Do not print secret values. If a required production secret is missing from the local/Railway environment, use the documented placeholder only where the issue permits it; otherwise return the issue with a blocker note instead of inventing a value.
 
 ## Parent PRD
 
@@ -21,7 +21,7 @@ Specifically:
 1. **Environment scoping**: per Railway's environment model, create `staging` and `production` alongside the existing `production` env from 001. Reconcile naming: if 001 named the env "production" and there is no dev/staging, rename it or add the others. Document the resolved naming in `deploy.md`.
 2. **Postgres per env**: each environment gets its own Postgres service (with pgvector, pgcrypto, citext). Run `migrations/0001_initial.sql` against each. Verify with `\dt`.
 3. **Redis per env**: each environment gets a Redis service. Capture `REDIS_URL` per env.
-4. **Secrets per env**: populate the full env-var set from `deploy.md` "Environment variables (production)" per environment. Use placeholder/dev keys for dev; real keys for staging/prod. R2 guardrail vars (`R2_FREE_*`, `R2_USAGE_ALERT_THRESHOLD`) per env.
+4. **Secrets per env**: populate the full env-var set from `deploy.md` "Environment variables (production)" per environment. Use placeholder/dev keys for dev; use existing authenticated/account-backed values for staging/prod when available. R2 guardrail vars (`R2_FREE_*`, `R2_USAGE_ALERT_THRESHOLD`) per env. Do not log secret values.
 5. **Service health**: `staging` and `production` services are paused (no binary running yet — slice 060 deploys); just the data plane needs to exist.
 6. **`scripts/provision-app-role.sh`** run against each env per `deploy.md` "First production deploy checklist" — `iter_app` + `iter_batch` + `iter_superuser` URLs minted.
 7. **`scripts/verify-rls-bypass.sh`** passes against each env.

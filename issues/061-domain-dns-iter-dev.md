@@ -1,12 +1,12 @@
 ---
-type: HITL
+type: AFK
 depends-on:
   - 058-railway-staging-prod-environments
 ---
 
-# HITL — requires domain registrar + DNS provider access
+# AFK — DNS via Railway + Cloudflare CLIs
 
-Registering / configuring `iter.dev` requires logging into a registrar (and possibly a DNS provider like Cloudflare). AFK workers should skip.
+This issue is CLI-ready now that `railway` and `wrangler` are authenticated in the terminal. Workers may use Railway domain commands plus Cloudflare/Wrangler or Cloudflare API-backed CLI flows to configure DNS and verify TLS. If `iter.dev` is not registered, not delegated to the available Cloudflare account, or the zone cannot be managed by the authenticated CLI, return the issue with a blocker note instead of attempting registrar work.
 
 ## Parent PRD
 
@@ -18,7 +18,7 @@ DNS for the production apex, the staging subdomain, and a placeholder for the st
 
 Specifically:
 
-1. **Confirm registration**: `iter.dev` is acquired and renewed for ≥1 year. If not yet acquired, register it (this is the gate — without the domain, the rest of v1 doesn't ship under the right name).
+1. **Confirm registration**: `iter.dev` is acquired and renewed for ≥1 year. If not yet acquired or not manageable by the authenticated CLI, stop and return the issue with a blocker note; do not attempt registrar purchase flows.
 2. **DNS provider**: Cloudflare is the recommended provider (free, simple, fast TTL changes). Document the choice in `deploy.md` if not Cloudflare.
 3. **A/CNAME records**:
    - `iter.dev` apex → Railway production `iter-server` (per Railway's domain wizard, usually a CNAME to a Railway-provided hostname or an ALIAS/ANAME at the apex).
@@ -31,7 +31,7 @@ Specifically:
 
 ## Acceptance criteria
 
-- [ ] `iter.dev` registered and renewed ≥1 year out
+- [ ] `iter.dev` registration/delegation verified, or the issue is returned with an explicit registrar/delegation blocker
 - [ ] DNS provider chosen and recorded in `deploy.md`
 - [ ] Apex `iter.dev` resolves to Railway production
 - [ ] `staging.iter.dev` resolves to Railway staging
