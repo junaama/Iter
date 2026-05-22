@@ -109,14 +109,20 @@ migrate-reset:
 db-verify: migrate-up
 	@scripts/verify-migration.sh "$(DATABASE_URL)"
 
-# test-rls: cross-tenant RLS isolation + cascade-delete invariants.
+# test-rls: cross-tenant RLS isolation + cascade-delete invariants AND
+# repository integration tests (issue 051+). Both live under
+# internal/db/... and share the `integration` build tag; running them
+# together saves a container-boot per slice.
 # Uses testcontainers-go to spin up a fresh pgvector/pg16 container,
 # applies every migration, mints iter_app, then asserts:
 #   - every tenant_id column is enumerated in the test (drift guard)
 #   - cross-tenant SELECT under iter_app returns only own-tenant rows
 #   - deleting a session cascades to events/embeddings/scores/outcomes
 #   - deleting a tenant cascades to its FK-CASCADE dependents
-# Requires Docker. Slow (~10s for container boot + migration apply).
+#   - the table repositories (tenants, users, tenant_users, sessions,
+#     session_events) satisfy their CRUD + RLS + cascade contracts
+# Requires Docker. ~40s on a warm cache (each repo test spins its own
+# container per the dbtest helper).
 # Gated behind the `integration` build tag so it never runs in
 # `make test`. CI wires `make test-rls` in alongside `make test`.
 .PHONY: test-rls
