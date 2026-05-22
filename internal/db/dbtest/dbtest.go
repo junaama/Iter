@@ -33,6 +33,12 @@ import (
 // repo tests can keep using the same handle layout.
 const AppRolePassword = "test_iter_app_pw_not_secret_only_test"
 
+// BatchRolePassword is the test-only password applied to the iter_batch
+// role on demand (when a test calls NewBatchPool). Kept distinct from
+// AppRolePassword so an accidental swap in tests fails loudly instead
+// of silently authenticating against the wrong role.
+const BatchRolePassword = "test_iter_batch_pw_not_secret_only_test"
+
 // TestDB carries the live container handles for an integration test.
 // Cleanup() tears everything down; tests must `defer Cleanup()`.
 //
@@ -45,7 +51,8 @@ const AppRolePassword = "test_iter_app_pw_not_secret_only_test"
 // handlers do.
 //
 // BatchPool is nil by default; tests that need WithBatch can call
-// NewBatchPool() to mint one bound to the iter_batch role.
+// NewBatchPool() to mint one bound to the iter_batch role. See
+// TestDB.NewBatchPool for the lifecycle / cleanup contract.
 type TestDB struct {
 	Super     *sql.DB
 	SuperDSN  string
@@ -236,6 +243,42 @@ func (t *TestDB) SeedSession(
 		tb.Fatalf("dbtest: seed session: %v", err)
 	}
 	return id
+}
+
+// NewBatchPool mints a *pgxpool.Pool bound to the iter_batch role.
+// Sets a known password on the role (via the superuser handle), then
+// rebuilds the DSN with iter_batch credentials and opens the pool.
+// The returned pool is appended to TestDB's cleanup chain so the
+// caller does not need to track it separately.
+//
+// Used by the archive cron tests (issue 047) which run under WithBatch
+// rather than WithTenant. The application code never opens a batch
+// pool itself — cmd/server reads $DATABASE_URL_BATCH and hands the
+// pool to deps.BatchDB — so the test helper is the only way to exercise
+// the BYPASSRLS path in integration tests.
+func (t *TestDB) NewBatchPool(ctx context.Context, tb testing.TB) *pgxpool.Pool {
+	tb.Helper()
+	if _, err := t.Super.ExecContext(ctx, fmt.Sprintf(
+		"ALTER ROLE iter_batch WITH LOGIN PASSWORD '%s'", BatchRolePassword,
+	)); err != nil {
+		tb.Fatalf("dbtest: alter iter_batch password: %v", err)
+	}
+	batchDSN := strings.Replace(t.SuperDSN, "postgres:postgres@",
+		"iter_batch:"+BatchRolePassword+"@", 1)
+	pool, err := db.NewPool(ctx, db.PoolConfig{DSN: batchDSN})
+	if err != nil {
+		tb.Fatalf("dbtest: open iter_batch pool: %v", err)
+	}
+	// Chain into the existing cleanup so the pool closes alongside
+	// AppPool / container.
+	prior := t.cleanupFn
+	t.cleanupFn = func() {
+		pool.Close()
+		if prior != nil {
+			prior()
+		}
+	}
+	return pool
 }
 
 // SeedScore inserts a session_scores row directly via the superuser.
