@@ -24,9 +24,20 @@ Set in Railway env vars per environment. Doppler deferred per phase 7.
 
 ```
 # Postgres
-DATABASE_URL=postgres://...
-PGBOUNCER_URL=postgres://... (transaction-mode pooler)
-DATABASE_BATCH_URL=postgres://... (BYPASSRLS role for scoring + archive)
+# Request-path: uses `iter_app` role (LOGIN NOSUPERUSER NOBYPASSRLS).
+# RLS is enforced — the Go binary MUST `SET LOCAL app.current_tenant = '<uuid>'`
+# at the start of every tenant-scoped transaction.
+DATABASE_URL=postgres://iter_app:<pw>@postgres.railway.internal:5432/railway?sslmode=require
+PGBOUNCER_URL=postgres://iter_app:<pw>@... (transaction-mode pooler; same user as DATABASE_URL)
+
+# Batch path: uses `iter_batch` role (BYPASSRLS). ONLY for the Modal nightly
+# scoring batch and the archive cron — NEVER reachable from the request path.
+DATABASE_URL_BATCH=postgres://iter_batch:<pw>@postgres.railway.internal:5432/railway?sslmode=require
+
+# Admin/migration path: the original Railway-auto-populated `postgres` superuser
+# URL, preserved as `DATABASE_URL_SUPERUSER` so `goose up`, `psql`, and PITR
+# tooling still have a way in. NEVER used by application code.
+DATABASE_URL_SUPERUSER=postgres://postgres:<pw>@postgres.railway.internal:5432/railway?sslmode=require
 
 # Redis
 REDIS_URL=redis://...
@@ -238,7 +249,10 @@ Independent of the alerts, the archive cron itself reads the same gauges and **r
 
 - [ ] All env vars set in Railway prod environment.
 - [ ] Postgres extensions verified: `pgvector`, `pgcrypto`, `citext`.
-- [ ] `iter_batch` role created.
+- [ ] `iter_batch` role created (migration 0001) with `BYPASSRLS`.
+- [ ] `iter_app` role created (migration 0002) with `NOSUPERUSER NOBYPASSRLS` + table grants.
+- [ ] `scripts/provision-app-role.sh` run: passwords minted, `DATABASE_URL` (iter_app), `DATABASE_URL_BATCH` (iter_batch), and `DATABASE_URL_SUPERUSER` (postgres) set in Railway.
+- [ ] `scripts/verify-rls-bypass.sh` passes against the live Railway DB.
 - [ ] Initial migration (0001_initial.sql) run; verified with `\dt`.
 - [ ] Redis reachable from Railway.
 - [ ] WorkOS production app configured with iter.dev redirect URI.
