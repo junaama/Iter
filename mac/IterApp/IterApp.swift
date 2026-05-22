@@ -3,12 +3,17 @@ import SwiftUI
 @main
 struct IterApp: App {
     @State private var themeStore = ThemeStore()
+    @State private var daemonClient = DaemonClient()
 
     var body: some Scene {
         WindowGroup("iter — Workspace") {
             WorkspaceView()
                 .environment(themeStore)
+                .environment(daemonClient)
                 .preferredColorScheme(themeStore.preferredColorScheme)
+                .task {
+                    daemonClient.start()
+                }
         }
         .defaultSize(width: IterSpacing.windowMaxWidth, height: IterSpacing.windowMaxHeight)
         .windowStyle(.hiddenTitleBar)

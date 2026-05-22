@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 // swiftlint:disable file_length
 
@@ -88,6 +89,7 @@ final class LayoutVariantStore {
 
 struct WorkspaceView: View {
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(DaemonClient.self) private var daemonClient
 
     @State private var route: Route = .me
     @State private var layoutStore = LayoutVariantStore()
@@ -148,6 +150,15 @@ struct WorkspaceView: View {
             if focused {
                 showsSearchPopover = true
             }
+        }
+        .alert("Iter daemon out of date", isPresented: Bindable(daemonClient).versionMismatch) {
+            Button("Quit and relaunch") {
+                NSWorkspace.shared.open(Bundle.main.bundleURL)
+                NSApp.terminate(nil)
+            }
+            Button("Dismiss", role: .cancel) {}
+        } message: {
+            Text("Install update to continue.")
         }
     }
 }
@@ -312,6 +323,7 @@ private struct EmptySearchPopover: View {
 
 private struct SidebarView: View {
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(DaemonClient.self) private var daemonClient
     @Binding var route: Route
 
     private let navItems: [SidebarNavItem] = [
@@ -363,7 +375,7 @@ private struct SidebarView: View {
 
             Spacer(minLength: IterSpacing.gapLarge)
 
-            SidebarFooterView()
+            SidebarFooterView(daemonClient: daemonClient)
         }
         .frame(width: IterSpacing.sidebarWidth)
         .background(Color.iterSidebar(for: colorScheme))
@@ -540,24 +552,40 @@ private struct RecentSessionButton: View {
 
 private struct SidebarFooterView: View {
     @Environment(\.colorScheme) private var colorScheme
+    @Bindable var daemonClient: DaemonClient
 
     var body: some View {
         VStack(alignment: .leading, spacing: IterSpacing.gapSmall) {
             HStack {
                 HStack(spacing: 6) {
-                    PulseDotView()
-                    Text(verbatim: "daemon · running")
+                    PulseDotView(state: dotState)
+                    Text(verbatim: daemonClient.footerLabel)
                 }
 
                 Spacer()
 
-                Text(verbatim: "1.4.2")
+                Button {
+                    if daemonClient.status.paused {
+                        daemonClient.resume()
+                    } else {
+                        daemonClient.pause()
+                    }
+                } label: {
+                    Image(systemName: daemonClient.status.paused ? "play.fill" : "pause.fill")
+                        .font(.system(size: 9, weight: .semibold))
+                        .frame(width: 20, height: 20)
+                        .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(Color.iterTextTertiary(for: colorScheme))
+                .disabled(!daemonClient.connected)
+                .accessibilityLabel(daemonClient.status.paused ? "Resume daemon" : "Pause daemon")
             }
 
             HStack {
-                Text(verbatim: "last sync")
+                Text(verbatim: daemonClient.footerDetail)
                 Spacer()
-                Text(verbatim: "3s ago")
+                Text(verbatim: daemonClient.daemonVersion.isEmpty ? "--" : daemonClient.daemonVersion)
             }
         }
         .font(IterFont.monoSmall)
@@ -567,6 +595,11 @@ private struct SidebarFooterView: View {
             DividerLine()
         }
         .accessibilityElement(children: .combine)
+    }
+
+    private var dotState: PulseDotView.State {
+        if !daemonClient.connected { return .bad }
+        return daemonClient.status.paused ? .warn : .good
     }
 }
 
@@ -794,15 +827,45 @@ private struct StatusPillView: View {
 private struct PulseDotView: View {
     @Environment(\.colorScheme) private var colorScheme
 
+    enum State {
+        case good
+        case warn
+        case bad
+    }
+
+    var state: State = .good
+
     var body: some View {
         Circle()
-            .fill(Color.iterGood(for: colorScheme))
+            .fill(fillColor)
             .frame(width: 7, height: 7)
             .overlay {
                 Circle()
-                    .stroke(Color.iterGoodSoft(for: colorScheme), lineWidth: 5)
+                    .stroke(haloColor, lineWidth: 5)
             }
             .accessibilityHidden(true)
+    }
+
+    private var fillColor: Color {
+        switch state {
+        case .good:
+            return Color.iterGood(for: colorScheme)
+        case .warn:
+            return Color.iterWarn(for: colorScheme)
+        case .bad:
+            return Color.iterBad(for: colorScheme)
+        }
+    }
+
+    private var haloColor: Color {
+        switch state {
+        case .good:
+            return Color.iterGoodSoft(for: colorScheme)
+        case .warn:
+            return Color.iterWarnSoft(for: colorScheme)
+        case .bad:
+            return Color.iterBadSoft(for: colorScheme)
+        }
     }
 }
 
@@ -829,11 +892,13 @@ private struct DividerLine: View {
 #Preview("Light") {
     WorkspaceView()
         .environment(ThemeStore())
+        .environment(DaemonClient())
         .preferredColorScheme(.light)
 }
 
 #Preview("Dark") {
     WorkspaceView()
         .environment(ThemeStore())
+        .environment(DaemonClient())
         .preferredColorScheme(.dark)
 }

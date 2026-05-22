@@ -31,6 +31,7 @@
 		1A000065000000000000000E /* Sparkline.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A000065000000000000001E /* Sparkline.swift */; };
 		1A000065000000000000000F /* StatusChip.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A000065000000000000001F /* StatusChip.swift */; };
 		1A0000650000000000000010 /* TraceRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000650000000000000020 /* TraceRow.swift */; };
+		1A0000680000000000000001 /* DaemonClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000680000000000000011 /* DaemonClient.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -60,6 +61,7 @@
 		1A000065000000000000001E /* Sparkline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sparkline.swift; sourceTree = "<group>"; };
 		1A000065000000000000001F /* StatusChip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusChip.swift; sourceTree = "<group>"; };
 		1A0000650000000000000020 /* TraceRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TraceRow.swift; sourceTree = "<group>"; };
+		1A0000680000000000000011 /* DaemonClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DaemonClient.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -87,6 +89,7 @@
 				1A0000010000000000000011 /* IterApp.swift */,
 				1A0000010000000000000012 /* WorkspaceView.swift */,
 				1A0000010000000000000013 /* ThemeStore.swift */,
+				1A0000680000000000000030 /* Daemon */,
 				1A0000650000000000000030 /* Components */,
 				1A0000010000000000000032 /* DesignSystem */,
 				1A0000010000000000000033 /* Resources */,
@@ -127,6 +130,14 @@
 				1A0000650000000000000020 /* TraceRow.swift */,
 			);
 			path = Components;
+			sourceTree = "<group>";
+		};
+		1A0000680000000000000030 /* Daemon */ = {
+			isa = PBXGroup;
+			children = (
+				1A0000680000000000000011 /* DaemonClient.swift */,
+			);
+			path = Daemon;
 			sourceTree = "<group>";
 		};
 		1A0000010000000000000033 /* Resources */ = {
@@ -237,6 +248,7 @@
 				1A000065000000000000000E /* Sparkline.swift in Sources */,
 				1A000065000000000000000F /* StatusChip.swift in Sources */,
 				1A0000650000000000000010 /* TraceRow.swift in Sources */,
+				1A0000680000000000000001 /* DaemonClient.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
