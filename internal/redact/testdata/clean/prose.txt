@@ -1,0 +1,4 @@
+Iter is a Mac app for teams using coding agents. A local daemon ingests
+agent traces, redacts secrets before any cloud sync, scores outcomes, and
+surfaces prompt refinements at task start. The product targets ~5K
+engineers at v1. Distribution is via the website.

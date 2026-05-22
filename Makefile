@@ -4,6 +4,11 @@
 
 SHELL := /bin/bash
 
+# trufflehog pin — kept in sync with `trufflehog.version` at the repo root.
+# `internal/redact` reads `trufflehog.version` at test time and asserts the
+# installed binary matches.
+TRUFFLEHOG_VERSION := 3.95.3
+
 # Migration runner: goose (https://github.com/pressly/goose)
 # Driver: postgres
 MIGRATIONS_DIR := migrations

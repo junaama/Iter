@@ -1,0 +1,6 @@
+2026-05-21T17:04:01Z INFO  server: starting on :8080
+2026-05-21T17:04:01Z INFO  db: connected pool=10
+2026-05-21T17:04:02Z DEBUG cache: warmup complete entries=1234
+2026-05-21T17:04:03Z INFO  scheduler: cron registered jobs=4
+2026-05-21T17:04:05Z INFO  request id=req_01HW9 path=/health status=200 dur_ms=2
+2026-05-21T17:04:06Z INFO  worker: drained queue size=0
