@@ -7,3 +7,4 @@
 .claude/
 .agents/
 modal/__pycache__/
+mac/build/

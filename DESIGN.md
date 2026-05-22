@@ -216,5 +216,6 @@ These appear in the visual layer and must not be implemented away:
 ## When updating designs
 
 - Edits to design tokens go in **both** this file and any future SwiftUI token file in lockstep.
+- SwiftUI design tokens live in `mac/IterApp/DesignSystem/`; update those files in lockstep with this section.
 - New screens (the 6 remaining from §6) reuse these tokens; do not introduce new colors, type sizes, or radii without updating this doc first.
 - If a token changes, search the SwiftUI source for hardcoded values that should have been the token.

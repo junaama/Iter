@@ -3,6 +3,7 @@
 # Build, test, and release targets land later per ARCHITECTURE.md §9.
 
 SHELL := /bin/bash
+MAC_DESTINATION ?= platform=macOS,arch=$(shell uname -m)
 
 # trufflehog pin — kept in sync with `trufflehog.version` at the repo root.
 # `internal/redact` reads `trufflehog.version` at test time and asserts the
@@ -26,6 +27,7 @@ help:
 	@echo "  make test          Run go test ./..."
 	@echo "  make lint          Run golangci-lint run"
 	@echo "  make bench         Run go test -run=^$$ -bench=. -benchmem ./..."
+	@echo "  make mac-dev       Build the unsigned local SwiftUI macOS app and launch it"
 	@echo ""
 	@echo "Migration targets:"
 	@echo "  make db-up         Start a local pgvector/pg16 container (port 5433)"
@@ -64,6 +66,23 @@ lint:
 .PHONY: bench
 bench:
 	go test -run=^$$ -bench=. -benchmem ./...
+
+.PHONY: mac-dev
+mac-dev:
+	xcodebuild \
+		-project mac/IterApp.xcodeproj \
+		-scheme IterApp \
+		-configuration Debug \
+		-destination '$(MAC_DESTINATION)' \
+		-derivedDataPath mac/build \
+		CODE_SIGNING_ALLOWED=NO \
+		build
+	@if [ -z "$$CI" ] && [ -z "$$HEADLESS" ]; then \
+		open mac/build/Build/Products/Debug/IterApp.app; \
+	else \
+		echo "Built mac/build/Build/Products/Debug/IterApp.app"; \
+		echo "Launch with: open mac/build/Build/Products/Debug/IterApp.app"; \
+	fi
 
 .PHONY: db-up
 db-up:
