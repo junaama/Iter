@@ -37,7 +37,7 @@ type Suggestion struct {
 
 // SuggestionWithScore augments Suggestion with the cosine distance
 // returned by an HNSW search. Score is `1 - cosine_distance`, i.e. closer
-// to 1.0 means more similar. Returned by SearchKNN and TopByAcceptance
+// to 1.0 means more similar. Returned by SearchSuggestionsKNN and TopByAcceptance
 // (the latter sets Score = 0 — callers should ignore it there).
 type SuggestionWithScore struct {
 	Suggestion
@@ -116,7 +116,7 @@ func UpsertSuggestion(ctx context.Context, tx pgx.Tx, s Suggestion) (Suggestion,
 	return out, nil
 }
 
-// SearchKNN returns the top-k suggestions most similar to queryVec under
+// SearchSuggestionsKNN returns the top-k suggestions most similar to queryVec under
 // cosine distance, using the HNSW index. RLS scopes the result set to
 // the calling tenant. The cosine distance operator is `<=>`; the score
 // reported back is `1 - distance` so callers can think in terms of
@@ -124,7 +124,7 @@ func UpsertSuggestion(ctx context.Context, tx pgx.Tx, s Suggestion) (Suggestion,
 //
 // k <= 0 falls back to 5. The caller should keep k small — HNSW recall
 // degrades past a few dozen.
-func SearchKNN(ctx context.Context, tx pgx.Tx, queryVec []float32, k int) ([]SuggestionWithScore, error) {
+func SearchSuggestionsKNN(ctx context.Context, tx pgx.Tx, queryVec []float32, k int) ([]SuggestionWithScore, error) {
 	if k <= 0 {
 		k = 5
 	}
@@ -169,7 +169,7 @@ func SearchKNN(ctx context.Context, tx pgx.Tx, queryVec []float32, k int) ([]Sug
 }
 
 // IncrementHitCount bumps a single row's hit_count by 1 and refreshes
-// last_used_at. Used by the request path when a SearchKNN result is
+// last_used_at. Used by the request path when a SearchSuggestionsKNN result is
 // served (the cache hit) without re-running the refinement LLM. Returns
 // pgx.ErrNoRows when the id is missing or hidden by RLS.
 func IncrementHitCount(ctx context.Context, tx pgx.Tx, suggID uuid.UUID) error {

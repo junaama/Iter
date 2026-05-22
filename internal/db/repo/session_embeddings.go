@@ -28,7 +28,7 @@ type Embedding struct {
 	CreatedAt      time.Time `db:"created_at"`
 }
 
-// ANNResult is one hit from SearchKNN. SessionID is the matched row's
+// ANNResult is one hit from SearchEmbeddingsKNN. SessionID is the matched row's
 // id; Similarity is 1 - cosine_distance, so it lives in [0, 1] and
 // higher is better. Returned in similarity-descending order (i.e.
 // closest-first), which matches the SQL `ORDER BY embedding <=> $1`
@@ -103,7 +103,7 @@ func GetEmbeddingForSession(ctx context.Context, tx pgx.Tx, sessionID uuid.UUID)
 	return e, nil
 }
 
-// SearchKNN runs the HNSW cosine-distance ANN search and returns up to
+// SearchEmbeddingsKNN runs the HNSW cosine-distance ANN search and returns up to
 // k nearest neighbors to queryVec. CRITICAL: the HNSW index was built
 // with vector_cosine_ops (migrations/0001) — the matching operator is
 // `<=>` (cosine distance), NOT `<->` (L2). Using the wrong operator
@@ -120,7 +120,7 @@ func GetEmbeddingForSession(ctx context.Context, tx pgx.Tx, sessionID uuid.UUID)
 // RLS predicate as a filter on the returned rows, which is fine at
 // v1 scale (ARCHITECTURE.md §8 migration triggers spell out when this
 // stops being fine).
-func SearchKNN(
+func SearchEmbeddingsKNN(
 	ctx context.Context,
 	tx pgx.Tx,
 	queryVec []float32,

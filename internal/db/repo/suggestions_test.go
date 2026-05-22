@@ -175,7 +175,7 @@ func TestSuggestions_SearchKNN_RLSScoped(t *testing.T) {
 	// Query under A's WithTenant — every result must be tenant A's.
 	queryVec := randVec(rand.New(rand.NewSource(5)))
 	if err := db.WithTenant(ctx, tdb.AppPool, tenantA.String(), func(ctx context.Context, tx pgx.Tx) error {
-		got, err := repo.SearchKNN(ctx, tx, queryVec, 10)
+		got, err := repo.SearchSuggestionsKNN(ctx, tx, queryVec, 10)
 		if err != nil {
 			return err
 		}
@@ -194,7 +194,7 @@ func TestSuggestions_SearchKNN_RLSScoped(t *testing.T) {
 
 	// And under B.
 	if err := db.WithTenant(ctx, tdb.AppPool, tenantB.String(), func(ctx context.Context, tx pgx.Tx) error {
-		got, err := repo.SearchKNN(ctx, tx, queryVec, 10)
+		got, err := repo.SearchSuggestionsKNN(ctx, tx, queryVec, 10)
 		if err != nil {
 			return err
 		}
@@ -219,11 +219,11 @@ func TestSuggestions_SearchKNN_Validation(t *testing.T) {
 	tenantID, _ := seedTenancy(ctx, t, tdb, "sugg-knn-val")
 
 	if err := db.WithTenant(ctx, tdb.AppPool, tenantID.String(), func(ctx context.Context, tx pgx.Tx) error {
-		if _, err := repo.SearchKNN(ctx, tx, nil, 5); err == nil {
+		if _, err := repo.SearchSuggestionsKNN(ctx, tx, nil, 5); err == nil {
 			t.Fatal("expected error on empty query vector")
 		}
 		// k <= 0 should fall back, not error
-		if _, err := repo.SearchKNN(ctx, tx, randVec(rand.New(rand.NewSource(6))), 0); err != nil {
+		if _, err := repo.SearchSuggestionsKNN(ctx, tx, randVec(rand.New(rand.NewSource(6))), 0); err != nil {
 			t.Fatalf("k=0 fallback failed: %v", err)
 		}
 		return nil

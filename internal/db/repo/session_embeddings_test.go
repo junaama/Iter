@@ -140,7 +140,7 @@ func TestEmbeddings_SearchKNN_DimGuard(t *testing.T) {
 	tenantID, _ := seedTenancy(ctx, t, tdb, "emb-dim")
 
 	if err := db.WithTenant(ctx, tdb.AppPool, tenantID.String(), func(ctx context.Context, tx pgx.Tx) error {
-		_, err := repo.SearchKNN(ctx, tx, []float32{1, 2}, 5)
+		_, err := repo.SearchEmbeddingsKNN(ctx, tx, []float32{1, 2}, 5)
 		if err == nil {
 			t.Fatalf("expected dim error")
 		}
@@ -194,7 +194,7 @@ func TestEmbeddings_SearchKNN_Ordering(t *testing.T) {
 	}
 
 	if err := db.WithTenant(ctx, tdb.AppPool, tenantID.String(), func(ctx context.Context, tx pgx.Tx) error {
-		results, err := repo.SearchKNN(ctx, tx, query, 3)
+		results, err := repo.SearchEmbeddingsKNN(ctx, tx, query, 3)
 		if err != nil {
 			return err
 		}
@@ -264,7 +264,7 @@ func TestEmbeddings_SearchKNN_RLSScoped(t *testing.T) {
 
 	q := randomUnitVec(r, repo.EmbeddingDim)
 	if err := db.WithTenant(ctx, tdb.AppPool, tenantA.String(), func(ctx context.Context, tx pgx.Tx) error {
-		results, err := repo.SearchKNN(ctx, tx, q, 50)
+		results, err := repo.SearchEmbeddingsKNN(ctx, tx, q, 50)
 		if err != nil {
 			return err
 		}
@@ -291,7 +291,7 @@ func TestEmbeddings_SearchKNN_DefaultK(t *testing.T) {
 
 	q := randomUnitVec(rand.New(rand.NewSource(3)), repo.EmbeddingDim)
 	if err := db.WithTenant(ctx, tdb.AppPool, tenantID.String(), func(ctx context.Context, tx pgx.Tx) error {
-		results, err := repo.SearchKNN(ctx, tx, q, 0)
+		results, err := repo.SearchEmbeddingsKNN(ctx, tx, q, 0)
 		if err != nil {
 			return err
 		}
