@@ -8,6 +8,7 @@ import (
 	"github.com/iter-dev/iter/internal/api/handler"
 	"github.com/iter-dev/iter/internal/api/middleware"
 	"github.com/iter-dev/iter/internal/app"
+	"github.com/iter-dev/iter/internal/ws"
 )
 
 // NewRouter constructs the chi-backed HTTP handler tree.
@@ -39,9 +40,8 @@ func NewRouter(deps app.Deps) chi.Router {
 	r.Group(func(authed chi.Router) {
 		// Middleware stack per ARCHITECTURE.md §9 Step 4:
 		//   request_id → logger → recover → auth → tenant → rate_limit → idempotency
-		// Auth (031) and idempotency (033) are wired today;
-		// tenant_context (034) and rate_limit (032) slot in here
-		// as later slices land.
+		// All five concrete middlewares are wired below — 031 (Auth),
+		// 034 (Tenant), 032 (RateLimit), 033 (Idempotency).
 		authed.Use(
 			middleware.RequestID,
 			middleware.Logger(deps.Logger),
@@ -59,6 +59,40 @@ func NewRouter(deps app.Deps) chi.Router {
 				deps.Auth,
 				middleware.WithSkip("/v1/webhooks"),
 				middleware.WithLogger(deps.Logger),
+			),
+			// Tenant (034) — opens a per-request RLS-scoped Postgres
+			// tx, runs SET LOCAL app.current_tenant from the
+			// Principal, and stashes the pgx.Tx on the ctx via
+			// internal/db so repository functions (issue 051+) read
+			// it implicitly. Commits on 2xx/3xx, rolls back on
+			// 4xx/5xx — status captured via a tiny ResponseWriter
+			// wrapper because net/http has no native intercept hook.
+			// /health and /v1/webhooks/* bypass: the probe has no
+			// Principal, and webhook handlers (issues 041/042)
+			// manage their own tx scope after HMAC verification.
+			// A nil deps.DB passes through with a warn log so
+			// early bring-up before DATABASE_URL is provisioned
+			// still boots; handlers that require the DB panic via
+			// db.Querier with a clear message rather than silently
+			// bypass RLS.
+			middleware.Tenant(
+				deps.DB,
+				middleware.WithTenantSkip("/v1/webhooks"),
+				middleware.WithTenantLogger(deps.Logger),
+			),
+			// RateLimit (032) — per-token sliding-window limiter
+			// keyed by JWT jti. Sits after auth so the Principal
+			// (TokenID + TokenType) is on the context, and before
+			// idempotency so a 429 short-circuits without touching
+			// the idempotency cache. /health and /v1/webhooks/*
+			// skip per the issue 032 contract (probe path is
+			// credential-less; webhook auth is HMAC, not JWT, so
+			// per-token enforcement doesn't apply). Nil Redis
+			// fails open per DECISIONS.md "Rate-limit middleware".
+			middleware.RateLimit(
+				deps.Redis,
+				middleware.WithRateLimitSkip("/health", "/v1/webhooks"),
+				middleware.WithRateLimitLogger(deps.Logger),
 			),
 			// Idempotency (033) — caches POST responses by tenant
 			// + path + Idempotency-Key for 24h with a 60s
@@ -86,5 +120,35 @@ func NewRouter(deps app.Deps) chi.Router {
 	// with respect to a sibling Group's Use calls.
 	r.Get("/health", handler.HealthHandler(deps))
 
+	// POST /v1/webhooks/github (issue 041) sits OUTSIDE the authed
+	// Group. The handler authenticates each delivery via per-sender
+	// shared-secret HMAC (X-Hub-Signature-256) — not a JWT — and
+	// manages its own idempotency keyed by X-GitHub-Delivery. Stacking
+	// the chi auth/tenant/idempotency chain on top would either reject
+	// every delivery (no JWT, no tenant context) or double-cache with
+	// conflicting keys. The middleware chain on the authed Group still
+	// declares /v1/webhooks in its skip-list as defense-in-depth, but
+	// registering here means the request never enters that Group's
+	// subrouter in the first place.
+	r.Post("/v1/webhooks/github", handler.GitHubWebhookHandler(deps))
+
+	// /v1/ws (issue 043) — WebSocket upgrade for the daemon ↔ cloud
+	// transport. Lives on the root router (outside the authed Group)
+	// because the gateway authenticates BEFORE the upgrade by
+	// reading the JWT from either the Authorization header (daemon)
+	// or the Sec-WebSocket-Protocol header (browser); the HTTP auth
+	// middleware would require Authorization, which browsers cannot
+	// set from JS. The gateway also owns its own connection
+	// lifecycle (heartbeat, ack protocol) that the request-scoped
+	// chi middleware chain isn't shaped for.
+	if deps.WS != nil {
+		r.Get("/v1/ws", deps.WS.ServeHTTP)
+	}
+
 	return r
 }
+
+// Ensure the ws package import is exercised even when deps.WS is nil
+// at compile time (early bring-up). Keeps `goimports -w` from
+// removing the import after a stale go.mod update.
+var _ = ws.NewGateway

@@ -14,6 +14,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -21,11 +22,13 @@ import (
 
 	"github.com/iter-dev/iter/internal/api"
 	"github.com/iter-dev/iter/internal/app"
+	"github.com/iter-dev/iter/internal/archive"
 	"github.com/iter-dev/iter/internal/auth"
 	"github.com/iter-dev/iter/internal/db"
 	"github.com/iter-dev/iter/internal/embed"
 	"github.com/iter-dev/iter/internal/llm"
 	iredis "github.com/iter-dev/iter/internal/redis"
+	"github.com/iter-dev/iter/internal/ws"
 	"github.com/iter-dev/iter/pkg/contracts"
 )
 
@@ -60,13 +63,27 @@ func main() {
 	}
 	defer pool.Close()
 
+	// Boot-time BatchDB pool (iter_batch BYPASSRLS role). Required by
+	// the archive cron (issue 047); the Modal nightly scorer owns its
+	// own Python-side iter_batch connection so it does NOT consume this
+	// pool. When $DATABASE_URL_BATCH is unset we log a warning and
+	// leave BatchDB nil — the archive scheduler skips its start in
+	// that case so dev boots without R2/cron config still come up.
+	batchPool, batchErr := mustNewBatchPool(logger)
+	if batchErr != nil {
+		// Soft-fail: a missing batch pool is an under-configured deploy,
+		// not a fatal misconfiguration of the request path.
+		logger.Warn("BatchDB unavailable; archive cron will not start", "err", batchErr)
+	} else {
+		defer batchPool.Close()
+	}
+
 	deps := app.Deps{
 		Logger:       logger,
 		BuildVersion: version,
 		LLM:          buildLLMRouter(logger),
 		DB:           pool,
-		// BatchDB left nil — Modal worker (issue 046) owns its own
-		// iter_batch connection.
+		BatchDB:      batchPool,
 	}
 
 	// Wire Redis when REDIS_URL is set; otherwise log and continue with a
@@ -113,6 +130,40 @@ func main() {
 	// request triggers the initial fetch.
 	deps.Auth = buildAuthVerifier(logger)
 
+	// Wire the WebSocket gateway (issue 043). The gateway authenticates
+	// inside ServeHTTP using deps.Auth, so it must be constructed AFTER
+	// buildAuthVerifier. A nil deps.Auth produces a gateway that
+	// rejects every upgrade with 503 auth_unavailable, matching the
+	// HTTP-middleware posture.
+	deps.WS = ws.NewGateway(ws.Config{
+		Verifier: deps.Auth,
+		Logger:   logger,
+	})
+
+	// Webhook shared secrets (issues 041/042). Each source is verified
+	// against its own secret so a leak of one doesn't compromise the
+	// other. Empty values are accepted at boot but the corresponding
+	// handler refuses every delivery with 401 — a wide-open webhook
+	// ingress is a security bug, never a fall-open default.
+	deps.WebhookSecrets = app.WebhookSecrets{
+		GitHub: os.Getenv("GITHUB_WEBHOOK_SECRET"),
+		Linear: os.Getenv("LINEAR_WEBHOOK_SECRET"),
+	}
+	if deps.WebhookSecrets.GitHub == "" {
+		logger.Warn("GITHUB_WEBHOOK_SECRET unset; POST /v1/webhooks/github will reject every delivery with 401")
+	}
+
+	// Archive cron (issue 047). Only starts when BatchDB + the full R2
+	// configuration are all present; any missing piece is a warning,
+	// not a fatal, so non-prod boots without R2 still come up. The
+	// scheduler runs in its own goroutine and drains on shutdown via
+	// the Stop() call wired into run().
+	archiveScheduler := buildArchiveScheduler(logger, deps.BatchDB)
+	if archiveScheduler != nil {
+		archiveScheduler.Start()
+		defer archiveScheduler.Stop()
+	}
+
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = defaultPort
@@ -124,6 +175,107 @@ func main() {
 		logger.Error("server exited with error", "err", err)
 		os.Exit(1)
 	}
+}
+
+// buildArchiveScheduler wires the daily 03:00 UTC archive cron. Returns
+// nil (with a Warn log) when any required piece is missing — BatchDB,
+// the R2 credentials, or the Cloudflare API token. Each gate is
+// independent so an operator can tell from the boot log exactly which
+// env var is missing (vs. a single composite "ARCHIVE_DISABLED" toggle
+// that would obscure the actual gap).
+//
+// CRON SPEC: "0 3 * * *" UTC. The scheduler is constructed with
+// time.UTC location (see archive.NewScheduler) so the crontab is
+// interpreted in UTC regardless of the server's TZ env var.
+func buildArchiveScheduler(logger *slog.Logger, batchDB *pgxpool.Pool) *archive.Scheduler {
+	if batchDB == nil {
+		logger.Warn("archive cron: BatchDB unset; not starting")
+		return nil
+	}
+
+	r2cfg := archive.R2Config{
+		Endpoint:        os.Getenv("R2_ENDPOINT"),
+		AccessKeyID:     os.Getenv("R2_ACCESS_KEY_ID"),
+		SecretAccessKey: os.Getenv("R2_SECRET_ACCESS_KEY"),
+		Region:          os.Getenv("R2_REGION"),
+	}
+	bucket := os.Getenv("R2_ARCHIVE_BUCKET")
+	if err := r2cfg.Validate(); err != nil || bucket == "" {
+		logger.Warn("archive cron: R2 config incomplete; not starting",
+			"have_endpoint", r2cfg.Endpoint != "",
+			"have_access_key", r2cfg.AccessKeyID != "",
+			"have_secret_key", r2cfg.SecretAccessKey != "",
+			"have_bucket", bucket != "",
+		)
+		return nil
+	}
+
+	store, err := archive.NewR2Store(context.Background(), r2cfg)
+	if err != nil {
+		logger.Error("archive cron: NewR2Store failed; not starting", "err", err)
+		return nil
+	}
+
+	meterCfg := archive.MeterConfig{
+		AccountID:     os.Getenv("R2_ACCOUNT_ID"),
+		APIToken:      os.Getenv("CLOUDFLARE_API_TOKEN"),
+		BucketName:    bucket,
+		FreeStorageGB: parseFloatEnv("R2_FREE_STORAGE_GB", 10),
+		FreeClassAOps: parseInt64Env("R2_FREE_CLASS_A_OPS", 1_000_000),
+		FreeClassBOps: parseInt64Env("R2_FREE_CLASS_B_OPS", 10_000_000),
+	}
+	meter, err := archive.NewCloudflareMeter(meterCfg)
+	if err != nil {
+		logger.Warn("archive cron: meter config incomplete; not starting", "err", err)
+		return nil
+	}
+
+	sch, err := archive.NewScheduler(archive.SchedulerConfig{
+		Spec: "0 3 * * *", // 03:00 UTC daily; ARCHITECTURE.md §4
+		Cron: archive.Config{
+			BatchDB:        batchDB,
+			Store:          store,
+			Bucket:         bucket,
+			Meter:          meter,
+			AlertThreshold: parseFloatEnv("R2_USAGE_ALERT_THRESHOLD", 0.80),
+			Logger:         logger,
+		},
+		Logger: logger,
+	})
+	if err != nil {
+		logger.Error("archive cron: scheduler construction failed", "err", err)
+		return nil
+	}
+	logger.Info("archive cron: scheduled", "spec", "0 3 * * *", "bucket", bucket)
+	return sch
+}
+
+// parseFloatEnv reads a float env var, returning fallback on missing or
+// unparsable. Used for the R2 free-tier numeric overrides so an
+// operator can shrink the staging guardrail without touching code.
+func parseFloatEnv(key string, fallback float64) float64 {
+	raw := os.Getenv(key)
+	if raw == "" {
+		return fallback
+	}
+	v, err := parseFloat(raw)
+	if err != nil {
+		return fallback
+	}
+	return v
+}
+
+// parseInt64Env mirrors parseFloatEnv for the Class A/B ops counters.
+func parseInt64Env(key string, fallback int64) int64 {
+	raw := os.Getenv(key)
+	if raw == "" {
+		return fallback
+	}
+	v, err := parseInt64(raw)
+	if err != nil {
+		return fallback
+	}
+	return v
 }
 
 // buildLLMRouter constructs the per-tier LLM router from environment vars.
@@ -320,3 +472,28 @@ func mustNewPool(logger *slog.Logger) (*pgxpool.Pool, error) {
 		Logger: logger,
 	})
 }
+
+// mustNewBatchPool reads $DATABASE_URL_BATCH and builds the BYPASSRLS
+// iter_batch pool. Returns (nil, error) when the env var is unset OR
+// when the connection fails. Unlike mustNewPool, the binary tolerates a
+// missing DATABASE_URL_BATCH: the request path is fully usable without
+// it; the archive cron simply doesn't start.
+func mustNewBatchPool(logger *slog.Logger) (*pgxpool.Pool, error) {
+	dsn := os.Getenv("DATABASE_URL_BATCH")
+	if dsn == "" {
+		return nil, errors.New("DATABASE_URL_BATCH unset")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), dbStartupTimeout)
+	defer cancel()
+	return db.NewPool(ctx, db.PoolConfig{
+		DSN:    dsn,
+		Logger: logger,
+	})
+}
+
+// parseFloat is the strconv.ParseFloat shim used by the R2 env parsers.
+// Centralized so the call sites in buildArchiveScheduler stay one-liner.
+func parseFloat(s string) (float64, error) { return strconv.ParseFloat(s, 64) }
+
+// parseInt64 is the strconv.ParseInt(64) shim, mirroring parseFloat.
+func parseInt64(s string) (int64, error) { return strconv.ParseInt(s, 10, 64) }

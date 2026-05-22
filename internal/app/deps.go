@@ -23,6 +23,7 @@ import (
 	"github.com/iter-dev/iter/internal/auth"
 	"github.com/iter-dev/iter/internal/embed"
 	"github.com/iter-dev/iter/internal/llm"
+	"github.com/iter-dev/iter/internal/ws"
 
 	goredis "github.com/redis/go-redis/v9"
 )
@@ -88,5 +89,40 @@ type Deps struct {
 	// returns 503 auth_unavailable on every non-whitelisted request so
 	// early-bring-up is loud rather than silently-unauthenticated.
 	Auth *auth.Verifier
+
+	// WS is the WebSocket gateway (issue 043) registered on GET /v1/ws.
+	// The gateway authenticates inside ServeHTTP (NOT via the HTTP
+	// auth middleware) because the JWT may arrive via either
+	// Authorization or Sec-WebSocket-Protocol depending on whether
+	// the client is the daemon or a browser. Nil in tests / early
+	// boots that don't require WS — the router skips the route
+	// registration when WS is nil rather than serve a half-wired
+	// handler.
+	WS *ws.Gateway
+
+	// WebhookSecrets bundles the per-source shared secrets used for
+	// HMAC verification by the webhook handlers (issues 041/042).
+	// Unset secrets cause the handler to reject every delivery with
+	// 401 — a webhook handler with no secret is a wide-open ingress
+	// and must fail closed.
+	WebhookSecrets WebhookSecrets
 	//   Modal  *modal.Client     // issue 057
+}
+
+// WebhookSecrets holds the shared secrets used to verify inbound
+// webhook signatures. One field per source so a leak of one secret
+// doesn't compromise another.
+//
+// Sourced from environment variables at boot (cmd/server) — never from
+// a header or a config file. Empty values are accepted at boot but
+// the webhook handler refuses every delivery in that state.
+type WebhookSecrets struct {
+	// GitHub is the value configured in the GitHub webhook UI as
+	// "Secret". The X-Hub-Signature-256 header is HMAC-SHA256 of the
+	// raw request body keyed by this value.
+	GitHub string
+
+	// Linear is the equivalent for Linear webhooks (issue 042). Holds
+	// space here so 042 can populate without re-shaping Deps.
+	Linear string
 }

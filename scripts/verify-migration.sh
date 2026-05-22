@@ -39,6 +39,7 @@ expected_tables=(
   outcomes suggestions stacks stack_shares
   archive_pointers audit_log
   scoring_batch_runs
+  pending_outcomes
 )
 for t in "${expected_tables[@]}"; do
   found="$(psql_q "SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relname='$t' AND c.relkind='r';")"

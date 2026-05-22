@@ -157,6 +157,51 @@ func ListRecentByUser(ctx context.Context, tx pgx.Tx, userID uuid.UUID, limit in
 	return scanSessions(rows)
 }
 
+// FindByRepoCommit returns the most recent session whose repo_hash
+// matches and which has a session_events row of type 'git_commit'
+// whose payload->>'sha' equals commitSHA. Used by the GitHub webhook
+// (issue 041) to map an inbound pull_request / check_run event back to
+// the session that produced the commit.
+//
+// repoHash is the SHA-256 of the canonical repo URL (formula recorded
+// in DECISIONS.md "repo_hash formula (issue 041)"). commitSHA is the
+// 40-char hex git SHA.
+//
+// Returns pgx.ErrNoRows when nothing matches under RLS. Callers in the
+// webhook path buffer the event into pending_outcomes on miss so the
+// late-match sweeper can retry once the session lands.
+func FindByRepoCommit(ctx context.Context, tx pgx.Tx, repoHash, commitSHA string) (Session, error) {
+	if repoHash == "" || commitSHA == "" {
+		return Session{}, errors.New("repo.sessions.find_by_repo_commit: repo_hash and commit_sha required")
+	}
+	var s Session
+	err := tx.QueryRow(ctx, sessionSelectAllColumns+`
+		  FROM sessions s
+		 WHERE s.repo_hash = $1
+		   AND EXISTS (
+		     SELECT 1 FROM session_events e
+		      WHERE e.session_id = s.id
+		        AND e.event_type = 'git_commit'
+		        AND e.payload->>'sha' = $2
+		   )
+		 ORDER BY s.started_at DESC
+		 LIMIT 1
+	`, repoHash, commitSHA).Scan(scanSessionTargets(&s)...)
+	if err != nil {
+		return Session{}, fmt.Errorf("repo.sessions.find_by_repo_commit: %w", err)
+	}
+	return s, nil
+}
+
+// FindByID fetches a session by id without applying any extra
+// filtering. Identical to GetSession but exported under a name that
+// reads naturally at webhook call sites where the lookup is
+// marker-style ("Closes session: <uuid>" parsed from a commit message).
+// Returns pgx.ErrNoRows when the row is hidden by RLS or doesn't exist.
+func FindByID(ctx context.Context, tx pgx.Tx, id uuid.UUID) (Session, error) {
+	return GetSession(ctx, tx, id)
+}
+
 // ListSubagents returns all sessions whose parent_session_id matches
 // the given id, ordered by started_at ASC for chronological replay.
 func ListSubagents(ctx context.Context, tx pgx.Tx, parentID uuid.UUID) ([]Session, error) {
