@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/go-chi/chi/v5"
+
 	"github.com/iter-dev/iter/internal/api"
 	"github.com/iter-dev/iter/internal/app"
 )
@@ -81,6 +83,27 @@ func TestRouter_HealthRegistered(t *testing.T) {
 	}
 	if body["db"] != "down" || body["redis"] != "down" {
 		t.Fatalf("nil deps: want db=down redis=down got %v", body)
+	}
+}
+
+func TestRouter_DashboardMeRegistered(t *testing.T) {
+	deps := app.Deps{
+		Logger:       slog.New(slog.NewTextHandler(io.Discard, nil)),
+		BuildVersion: "test",
+	}
+
+	r := api.NewRouter(deps)
+	found := false
+	if err := chi.Walk(r, func(method string, route string, _ http.Handler, _ ...func(http.Handler) http.Handler) error {
+		if method == http.MethodGet && route == "/v1/dashboard/me" {
+			found = true
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("walk router: %v", err)
+	}
+	if !found {
+		t.Fatalf("GET /v1/dashboard/me route not registered")
 	}
 }
 

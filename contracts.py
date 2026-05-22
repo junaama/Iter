@@ -15,7 +15,7 @@ Conventions:
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from enum import Enum
 from typing import Annotated, Literal, Optional, Union
 from uuid import UUID
@@ -252,14 +252,38 @@ class SessionSummary(BaseModel):
     latest_score: Optional[SessionScoreView] = None
 
 
+class DashboardUser(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: UUID
+    display_name: str
+    email: str
+
+
+class DashboardTrendPoint(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    date: date
+    composite_score: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    session_count: int = Field(ge=0)
+
+
+class DashboardRecentSession(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: UUID
+    started_at: datetime
+    composite_score: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    harness: Harness
+    redacted_prompt_preview: str = Field(max_length=123)
+
+
 class DashboardMeResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    user_id: UUID
-    rolling_7d_avg_score: Optional[float]
-    rolling_30d_avg_score: Optional[float]
-    recent_sessions: list[SessionSummary]
-    trend: list[tuple[datetime, float]]  # (day, avg_score)
+    user: DashboardUser
+    trend: list[DashboardTrendPoint]
+    recent_sessions: list[DashboardRecentSession]
 
 
 class DashboardTeamResponse(BaseModel):

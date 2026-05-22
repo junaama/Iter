@@ -105,6 +105,8 @@ func NewRouter(deps app.Deps) chi.Router {
 			middleware.Idempotency(deps.Redis, deps.Logger),
 		)
 
+		authed.Get("/v1/dashboard/me", handler.DashboardMeHandler(deps))
+
 		// Placeholder for any unrouted request until handlers land
 		// in 029+. 503 (not 404) so misconfigured callers reaching
 		// this binary today can distinguish "wrong URL" from
