@@ -1,0 +1,157 @@
+# Iter CI — lint + unit tests + integration tests + build sanity.
+#
+# Triggers:
+#   - PRs targeting `main`
+#   - Pushes to `main`
+#
+# Job matrix:
+#   - lint:             golangci-lint (always)
+#   - test:             `make test` unit suite (always)
+#   - build:            `go build ./...` sanity check (always)
+#   - test-integration: `make test-rls` + `make test-redis` against
+#                       testcontainer-spawned Postgres + Redis. Runs on PRs
+#                       targeting main and on pushes to main; skipped on
+#                       feature-branch pushes to keep iteration speed up
+#                       (the same checks fire when the PR opens).
+#
+# Status-check names (kept stable for branch-protection):
+#   ci / lint
+#   ci / test
+#   ci / build
+#   ci / test-integration
+#
+# Docker: ubuntu-latest ships Docker, so testcontainers-go works without a
+# setup step. RYUK is disabled to match the local Makefile pattern (issues
+# 004 / 050) — tests already call container.Terminate in cleanup.
+#
+# PgBouncer: not exercised in CI. Production routes through PgBouncer in
+# transaction mode, but the integration tests run against bare Postgres.
+# Accepted gap per DECISIONS.md (issue 049); CI must not add PgBouncer.
+#
+# Go version: pinned to 1.25 (matches the `go` directive in go.mod). The
+# `GOTOOLCHAIN=local` env forbids the toolchain from auto-upgrading.
+#
+# Trufflehog: pinned to the version in `trufflehog.version`. The redact
+# tests assert the installed binary matches the pin, so CI installs it
+# explicitly before `make test` and `make test-rls`.
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GO_VERSION: "1.25"
+  GOTOOLCHAIN: local
+  CGO_ENABLED: "0"
+
+jobs:
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      # golangci-lint-action manages its own cache keyed on the action
+      # version + go.sum. `.golangci.yml` (issue 007) is the source of
+      # truth for enabled linters; CI uses it unmodified.
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: v1.62.2
+          args: --timeout=5m
+
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      # Install pinned trufflehog. internal/redact tests read
+      # `trufflehog.version` and assert `trufflehog --version` matches.
+      - name: Install trufflehog (pinned)
+        run: |
+          set -euo pipefail
+          version="$(cat trufflehog.version)"
+          echo "Installing trufflehog v${version}"
+          curl -sSfL https://raw.githubusercontent.com/trufflesecurity/trufflehog/main/scripts/install.sh \
+            | sh -s -- -b "$HOME/.local/bin" "v${version}"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$HOME/.local/bin/trufflehog" --version
+
+      - name: make test
+        run: make test
+
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: go build ./...
+        run: go build ./...
+
+  test-integration:
+    name: test-integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    # Skip on plain feature-branch pushes; the equivalent checks fire when a
+    # PR to main opens / updates. This keeps CI cost down on rapid iteration
+    # while still gating merges.
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
+    env:
+      # testcontainers-go respects this; matches local Makefile pattern.
+      TESTCONTAINERS_RYUK_DISABLED: "true"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Install trufflehog (pinned)
+        run: |
+          set -euo pipefail
+          version="$(cat trufflehog.version)"
+          curl -sSfL https://raw.githubusercontent.com/trufflesecurity/trufflehog/main/scripts/install.sh \
+            | sh -s -- -b "$HOME/.local/bin" "v${version}"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      # testcontainers-go boots its own pgvector/pg16 and redis:7 containers;
+      # no `services:` block needed. The Makefile targets are gated behind
+      # the `integration` build tag so they never fire from `make test`.
+      - name: make test-rls
+        run: make test-rls
+
+      - name: make test-redis
+        run: make test-redis

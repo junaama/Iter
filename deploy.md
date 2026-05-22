@@ -245,6 +245,28 @@ Independent of the alerts, the archive cron itself reads the same gauges and **r
 
 `internal/archive/r2_meter.go` — Cloudflare API client, gauge emitter, guardrail check. `internal/archive/cron.go` calls the guardrail before every `PutObject`. Runbook: `runbooks/r2-quota-exceeded.md`.
 
+## GitHub branch protection (HITL, one-time)
+
+CI workflows live in `.github/workflows/ci.yml` and run on every PR + push to `main`. The actual protection rules must be configured by a human in **Settings → Branches → Branch protection rules** because the GitHub API for them is org-admin scoped.
+
+Required configuration for the `main` branch:
+
+- [ ] Require a pull request before merging.
+- [ ] Require **≥1 approval** on each PR.
+- [ ] Require status checks to pass before merging. Required checks (names match the `name:` keys in `ci.yml`):
+  - `ci / lint`
+  - `ci / test`
+  - `ci / build`
+  - `ci / test-integration`
+- [ ] Require branches to be up to date with `main` before merging.
+- [ ] Require linear history (no merge commits; rebase or squash).
+- [ ] Restrict force-pushes to `main`.
+- [ ] Restrict deletions of `main`.
+
+CodeQL (`.github/workflows/codeql.yml`) is **not** a required check — findings surface in the Security tab but are advisory at v1. Dependabot (`.github/dependabot.yml`) opens PRs weekly; those PRs go through the same required-check set as any human PR.
+
+Renaming a CI job (the `name:` key) is a breaking change to branch protection and must be coordinated with re-selecting the new check name in the protection rule.
+
 ## First production deploy checklist
 
 - [ ] All env vars set in Railway prod environment.

@@ -1,0 +1,52 @@
+# CodeQL static analysis for Go.
+#
+# Runs:
+#   - on PRs to main (so security issues land with the code that introduces them)
+#   - on pushes to main
+#   - weekly (Mondays 06:00 UTC) to pick up new CodeQL queries against the
+#     existing tree
+#
+# Findings surface in the Security tab; this workflow does not block merges
+# on its own — `ci / *` jobs are the merge gate.
+
+name: codeql
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "0 6 * * 1"
+
+permissions:
+  actions: read
+  contents: read
+  security-events: write
+
+jobs:
+  analyze:
+    name: analyze (go)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache: true
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: go
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:go"
