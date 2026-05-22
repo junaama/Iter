@@ -136,7 +136,7 @@ test-rls:
 	@sock=$$(docker context inspect --format '{{.Endpoints.docker.Host}}' 2>/dev/null); \
 	DOCKER_HOST=$${DOCKER_HOST:-$$sock} \
 	TESTCONTAINERS_RYUK_DISABLED=true \
-	go test -tags=integration -count=1 -timeout=180s ./internal/db/... ./internal/api/handler
+	go test -tags=integration -count=1 -timeout=180s ./internal/db/... ./internal/api/handler ./internal/ingest
 
 # test-redis: Redis Streams + DLQ integration tests against a real
 # redis:7-alpine container via testcontainers-go. Same shape as

@@ -26,10 +26,12 @@ type AuditLog struct {
 }
 
 const (
-	ActorKindUser = "user"
+	ActorKindUser   = "user"
+	ActorKindSystem = "system"
 
-	AuditEventStackShared   = "stack_shared"
-	AuditEventStackUnshared = "stack_unshared"
+	AuditEventStackShared               = "stack_shared"
+	AuditEventStackUnshared             = "stack_unshared"
+	AuditEventLeakDetectedPostIngestion = "leak_detected_post_ingestion"
 )
 
 var validActorKinds = map[string]struct{}{
@@ -40,21 +42,23 @@ var validActorKinds = map[string]struct{}{
 }
 
 var validAuditEvents = map[string]struct{}{
-	"tenant_created":               {},
-	"tenant_deleted":               {},
-	"user_created":                 {},
-	"user_deleted":                 {},
-	"user_left_team":               {},
-	AuditEventStackShared:          {},
-	AuditEventStackUnshared:        {},
-	"leak_detected_post_ingestion": {},
-	"session_cascade_deleted":      {},
-	"score_model_rollback":         {},
-	"permissions_revoked":          {},
-	"permissions_granted":          {},
-	"admin_action":                 {},
-	"data_export_requested":        {},
-	"data_deletion_requested":      {},
+	"tenant_created":                    {},
+	"tenant_deleted":                    {},
+	"user_created":                      {},
+	"user_deleted":                      {},
+	"user_left_team":                    {},
+	AuditEventStackShared:               {},
+	AuditEventStackUnshared:             {},
+	"incident_linked":                   {},
+	"incident_resolved":                 {},
+	AuditEventLeakDetectedPostIngestion: {},
+	"session_cascade_deleted":           {},
+	"score_model_rollback":              {},
+	"permissions_revoked":               {},
+	"permissions_granted":               {},
+	"admin_action":                      {},
+	"data_export_requested":             {},
+	"data_deletion_requested":           {},
 }
 
 // InsertAuditLog appends one audit event under the active tenant tx.

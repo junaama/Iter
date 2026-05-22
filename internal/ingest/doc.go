@@ -1,9 +1,8 @@
-// Package ingest will host the trace-ingestion processor: pulls TraceEvent
-// batches off the Redis Stream the WS gateway publishes to, runs them through
-// the redaction classifier (internal/redact), persists clean/strippable events
-// to session_events, and emits the embedding-worker job.
+// Package ingest owns the server-side daemon trace ingestion path.
 //
-// Intentionally empty at issue 048 — this slice only stamps the §9 Step 3
-// repository layout on disk. Implementation lands alongside the Redis Streams
-// wiring (issue 050) and the ingest pipeline issues that follow.
+// It has two halves:
+//   - a WebSocket handler that durably enqueues parsed trace.event messages
+//     into a per-tenant Redis Stream before ACKing the daemon;
+//   - a consumer-group worker that re-classifies payloads, persists sessions
+//     and events under tenant RLS, and enqueues embedding work.
 package ingest

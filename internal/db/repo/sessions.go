@@ -151,6 +151,88 @@ func InsertSession(ctx context.Context, tx pgx.Tx, s Session) (Session, error) {
 	return out, nil
 }
 
+// UpsertSession inserts a session with a daemon-provided id, returning the
+// existing row on replay. The ingestion pipeline uses this so the daemon's
+// session_id remains the canonical cross-service identifier.
+func UpsertSession(ctx context.Context, tx pgx.Tx, s Session) (Session, bool, error) {
+	if s.ID == uuid.Nil {
+		return Session{}, false, errors.New("repo.sessions.upsert: id required")
+	}
+	if s.TenantID == uuid.Nil {
+		return Session{}, false, errors.New("repo.sessions.upsert: tenant_id required")
+	}
+	if s.UserID == uuid.Nil {
+		return Session{}, false, errors.New("repo.sessions.upsert: user_id required")
+	}
+	if s.Harness == "" || s.Model == "" {
+		return Session{}, false, errors.New("repo.sessions.upsert: harness and model required")
+	}
+	if s.RedactedPrompt == "" {
+		return Session{}, false, errors.New("repo.sessions.upsert: redacted_prompt required")
+	}
+	if _, ok := validClassifications[s.Classification]; !ok {
+		return Session{}, false, fmt.Errorf("repo.sessions.upsert: invalid classification %q", s.Classification)
+	}
+	if s.StartedAt.IsZero() {
+		return Session{}, false, errors.New("repo.sessions.upsert: started_at required")
+	}
+	if s.Tools == nil {
+		s.Tools = []string{}
+	}
+
+	var out Session
+	var inserted bool
+	err := tx.QueryRow(ctx, `
+		WITH ins AS (
+			INSERT INTO sessions (
+			  id, tenant_id, user_id, parent_session_id, harness, model, effort,
+			  tools, repo_hash, git_branch, started_at, ended_at, wall_time_ms,
+			  turn_count, total_tokens_in, total_tokens_out, redacted_prompt,
+			  redacted_system, classification
+			) VALUES (
+			  $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19
+			)
+			ON CONFLICT (id) DO NOTHING
+			RETURNING
+			  id, tenant_id, user_id, parent_session_id, harness, model, effort,
+			  tools, repo_hash, git_branch, started_at, ended_at, wall_time_ms,
+			  turn_count, total_tokens_in, total_tokens_out, redacted_prompt,
+			  redacted_system, classification, ingested_at, archived_at, true AS inserted
+		)
+		SELECT
+		  id, tenant_id, user_id, parent_session_id, harness, model, effort,
+		  tools, repo_hash, git_branch, started_at, ended_at, wall_time_ms,
+		  turn_count, total_tokens_in, total_tokens_out, redacted_prompt,
+		  redacted_system, classification, ingested_at, archived_at, inserted
+		  FROM ins
+		UNION ALL
+		SELECT
+		  id, tenant_id, user_id, parent_session_id, harness, model, effort,
+		  tools, repo_hash, git_branch, started_at, ended_at, wall_time_ms,
+		  turn_count, total_tokens_in, total_tokens_out, redacted_prompt,
+		  redacted_system, classification, ingested_at, archived_at, false AS inserted
+		  FROM sessions
+		 WHERE id = $1
+		   AND NOT EXISTS (SELECT 1 FROM ins)
+	`,
+		s.ID, s.TenantID, s.UserID, s.ParentSessionID, s.Harness, s.Model, s.Effort,
+		s.Tools, s.RepoHash, s.GitBranch, s.StartedAt, s.EndedAt, s.WallTimeMs,
+		s.TurnCount, s.TotalTokensIn, s.TotalTokensOut, s.RedactedPrompt,
+		s.RedactedSystem, s.Classification,
+	).Scan(
+		&out.ID, &out.TenantID, &out.UserID, &out.ParentSessionID, &out.Harness,
+		&out.Model, &out.Effort, &out.Tools, &out.RepoHash, &out.GitBranch,
+		&out.StartedAt, &out.EndedAt, &out.WallTimeMs, &out.TurnCount,
+		&out.TotalTokensIn, &out.TotalTokensOut, &out.RedactedPrompt,
+		&out.RedactedSystem, &out.Classification, &out.IngestedAt, &out.ArchivedAt,
+		&inserted,
+	)
+	if err != nil {
+		return Session{}, false, fmt.Errorf("repo.sessions.upsert: %w", err)
+	}
+	return out, inserted, nil
+}
+
 // GetSession returns a session by id. Returns pgx.ErrNoRows when
 // missing — including when RLS hides the row from the current tenant.
 // Callers cannot distinguish "doesn't exist" from "not yours" by design.

@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	goredis "github.com/redis/go-redis/v9"
 
 	"github.com/iter-dev/iter/internal/api"
 	"github.com/iter-dev/iter/internal/app"
@@ -26,6 +27,7 @@ import (
 	"github.com/iter-dev/iter/internal/auth"
 	"github.com/iter-dev/iter/internal/db"
 	"github.com/iter-dev/iter/internal/embed"
+	"github.com/iter-dev/iter/internal/ingest"
 	"github.com/iter-dev/iter/internal/llm"
 	iredis "github.com/iter-dev/iter/internal/redis"
 	"github.com/iter-dev/iter/internal/ws"
@@ -139,6 +141,9 @@ func main() {
 		Verifier: deps.Auth,
 		Logger:   logger,
 	})
+	if deps.Redis != nil {
+		deps.WS.Register(ws.MessageTypeIngest, ingest.NewWSHandler(deps.Redis, logger, time.Now))
+	}
 
 	// Wire the AuthKit login flow (GET /auth/login, /auth/callback,
 	// /auth/logout). These routes obtain the JWTs that deps.Auth
@@ -175,6 +180,11 @@ func main() {
 		defer archiveScheduler.Stop()
 	}
 
+	ingestCancel := startIngestWorker(logger, deps.DB, deps.Redis)
+	if ingestCancel != nil {
+		defer ingestCancel()
+	}
+
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = defaultPort
@@ -186,6 +196,35 @@ func main() {
 		logger.Error("server exited with error", "err", err)
 		os.Exit(1)
 	}
+}
+
+func startIngestWorker(logger *slog.Logger, pool *pgxpool.Pool, redisClient *goredis.Client) context.CancelFunc {
+	if redisClient == nil {
+		logger.Warn("ingest worker not started: Redis unavailable")
+		return nil
+	}
+	count, err := strconv.Atoi(os.Getenv("INGEST_WORKER_COUNT"))
+	if err != nil || count <= 0 {
+		count = ingest.DefaultWorkers
+	}
+	worker, err := ingest.NewWorker(ingest.WorkerConfig{
+		DB:     pool,
+		Redis:  redisClient,
+		Logger: logger,
+		Count:  count,
+	})
+	if err != nil {
+		logger.Error("ingest worker construction failed; not starting", "err", err)
+		return nil
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	if err := worker.Start(ctx); err != nil {
+		cancel()
+		logger.Error("ingest worker start failed", "err", err)
+		return nil
+	}
+	logger.Info("ingest worker started", "count", count, "consumer", worker.ConsumerName())
+	return cancel
 }
 
 // buildArchiveScheduler wires the daily 03:00 UTC archive cron. Returns
