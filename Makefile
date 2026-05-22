@@ -19,6 +19,7 @@ help:
 	@echo "Go targets:"
 	@echo "  make test          Run go test ./..."
 	@echo "  make lint          Run golangci-lint run"
+	@echo "  make bench         Run go test -run=^$$ -bench=. -benchmem ./..."
 	@echo ""
 	@echo "Migration targets:"
 	@echo "  make db-up         Start a local pgvector/pg16 container (port 5433)"
@@ -42,6 +43,12 @@ test:
 .PHONY: lint
 lint:
 	golangci-lint run
+
+# Run all benchmarks across the module. The `-run=^$$` skips tests so only
+# Benchmark* functions execute; `-benchmem` reports allocation counts.
+.PHONY: bench
+bench:
+	go test -run=^$$ -bench=. -benchmem ./...
 
 .PHONY: db-up
 db-up:
