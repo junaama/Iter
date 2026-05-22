@@ -30,6 +30,9 @@ help:
 	@echo "  make migrate-reset Roll back all migrations"
 	@echo "  make db-verify     Apply migrations and verify schema invariants"
 	@echo ""
+	@echo "Benchmark targets (on-demand, NOT for CI):"
+	@echo "  make bench-hnsw    HNSW 10K-vector baseline (writes benchmarks/hnsw-10k-baseline.md)"
+	@echo ""
 	@echo "DATABASE_URL=$(DATABASE_URL)"
 
 .PHONY: test
@@ -84,3 +87,10 @@ migrate-reset:
 .PHONY: db-verify
 db-verify: migrate-up
 	@scripts/verify-migration.sh "$(DATABASE_URL)"
+
+# bench-hnsw: 10K-vector HNSW baseline for `session_embeddings`. On-demand
+# only — explicitly NOT wired into CI. See issue 005 + ARCHITECTURE.md §8.
+# Set DATABASE_URL to the Railway public URL for prod-hardware numbers.
+.PHONY: bench-hnsw
+bench-hnsw:
+	@DATABASE_URL="$(DATABASE_URL)" bash scripts/bench-hnsw.sh
