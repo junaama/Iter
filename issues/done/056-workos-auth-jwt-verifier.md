@@ -58,9 +58,36 @@ Do NOT wire the auth middleware (`internal/api/middleware/auth.go`) in this slic
 - [ ] Fixture tests cover: valid, expired, wrong issuer, malformed, missing tenant, cache TTL, kid-miss refresh
 - [ ] `make test` + `make lint` pass
 
+## Status
+
+AFK scope **complete**. HITL scope **deferred** — see "HITL items remaining" below.
+
+### AFK delivered
+
+- `internal/auth/verifier.go` — `Verifier` with JWKS cache (1h fresh TTL, 10m stale-while-revalidate window, kid-miss synchronous refresh).
+- `internal/auth/verifier_test.go` — table-driven coverage for: valid, expired, wrong issuer, wrong audience, missing tenant_id, non-UUID tenant_id, non-UUID sub, malformed (not 3 segments), empty, bad signature; plus dedicated tests for warm-cache + JWKS-down, cold-cache + JWKS-down (`ErrAuthUnavailable`), and cache TTL refresh-after-expiry.
+- `internal/auth/doc.go` — package overview.
+- `pkg/contracts/principal.go` — `Principal` struct (`UserID`, `TenantID`, `Roles`, `TokenID`); `WithPrincipal`, `PrincipalFromContext`, `RequireAuth` helpers; `ErrUnauthenticated` sentinel.
+- `DECISIONS.md` — three new entries: JWT library choice (`lestrrat-go/jwx/v2`), claim contract (tenant_id + sub must be UUIDs), cache failure-mode policy (degraded auth preferred over no auth).
+- `go.mod` — added `github.com/lestrrat-go/jwx/v2` and `github.com/google/uuid`.
+- `make test` and `make lint` both green.
+
+### HITL items remaining
+
+The middleware that *uses* this verifier is issue 031 (Step 4) — explicitly out of scope here. The remaining HITL items, blocking only the **end-to-end auth flow** (not this slice), are:
+
+- [ ] Create three WorkOS OIDC applications: `iter-dev`, `iter-staging`, `iter-prod`. Record client IDs and API keys in Railway env (`WORKOS_CLIENT_ID`, `WORKOS_API_KEY`).
+- [ ] Configure redirect URIs per env: `https://iter.dev/auth/callback` (prod), `https://staging.iter.dev/auth/callback` (staging), `http://localhost:8080/auth/callback` (dev).
+- [ ] Enable the device-code grant for each app (CLI/daemon flow).
+- [ ] Capture JWKS URL per env; set as `WORKOS_JWKS_URL` in Railway.
+- [ ] Set `WORKOS_ISSUER` and `WORKOS_AUDIENCE` env vars per env (the verifier's `VerifierConfig` reads these at boot).
+- [ ] SAML/SSO connections deferred to first enterprise contract — already noted in `DECISIONS.md` Phase 5.
+
+When the HITL pieces land, wire them into `internal/app.Deps` and into `auth.NewVerifier(...)` in `cmd/server`. The verifier itself needs no further code changes to consume them.
+
 ## Blocked by
 
-- Blocked by `issues/007-go-module-skeleton.md`
+- Blocked by `issues/007-go-module-skeleton.md` (resolved)
 
 ## User stories addressed
 
