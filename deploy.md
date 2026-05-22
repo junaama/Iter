@@ -4,7 +4,7 @@
 
 | Component | Host | Notes |
 |---|---|---|
-| Go server (gateway + API + workers + cron) | Railway | Single binary, three environments: dev, staging, prod. |
+| Go server (gateway + API + workers + cron) | Railway | Single binary, three environments: dev, staging, production. |
 | Postgres 16+ (Railway image currently ships PG 18.4) + pgvector | Railway managed | Verify pgvector + citext + pgcrypto extensions enabled. |
 | Redis | Railway managed | Both cache and Redis Streams durable queue. |
 | Nightly scoring batch | Modal | Scheduled function; warm pool N=2. |
@@ -15,6 +15,18 @@
 | Domain | iter.dev | Apex pointed at Railway; subdomains: staging.iter.dev, status.iter.dev. |
 
 Gateway WS hosting decision (deferred to verification): Railway WebSocket support for production scale must be confirmed. If insufficient at ~3K+ concurrent connections, gateway moves to Fly.io; rest of stack stays on Railway. Documented as a phase-8 contingency.
+
+### Railway environments
+
+The `iter` Railway project uses three long-lived environments. Each environment has an isolated Postgres service, Redis service, and `iter-server` variable scope.
+
+| Environment | Purpose | Postgres service | Redis service | App service state |
+|---|---|---|---|---|
+| `dev` | Local/dev integration against cloud-managed data services. Placeholder provider keys are allowed. | `Postgres-IVFh` | `Redis` | `iter-server` variables populated; no binary deployed yet. |
+| `staging` | Main-branch verification target before production promotion. Production-grade secrets required before external smoke tests. | `Postgres-f-fd` | `Redis-B2wt` | `iter-server` variables partially populated; no binary deployed yet. |
+| `production` | Manual promotion target for iter.dev. | `Postgres` | `Redis-6Z2f` | `iter-server` variables partially populated; no binary deployed yet. |
+
+The production environment also contains older Postgres services from earlier provisioning attempts. The canonical production database for Iter v1 is the `Postgres` service unless a later decision log entry changes it.
 
 ## Environment variables (production)
 
@@ -267,28 +279,33 @@ CodeQL (`.github/workflows/codeql.yml`) is **not** a required check — findings
 
 Renaming a CI job (the `name:` key) is a breaking change to branch protection and must be coordinated with re-selecting the new check name in the protection rule.
 
-## First production deploy checklist
+## First deploy checklist
 
-- [ ] All env vars set in Railway prod environment.
-- [ ] Postgres extensions verified: `pgvector`, `pgcrypto`, `citext`.
-- [ ] `iter_batch` role created (migration 0001) with `BYPASSRLS`.
-- [ ] `iter_app` role created (migration 0002) with `NOSUPERUSER NOBYPASSRLS` + table grants.
-- [ ] `scripts/provision-app-role.sh` run: passwords minted, `DATABASE_URL` (iter_app), `DATABASE_URL_BATCH` (iter_batch), and `DATABASE_URL_SUPERUSER` (postgres) set in Railway.
-- [ ] `scripts/verify-rls-bypass.sh` passes against the live Railway DB.
-- [ ] Initial migration (0001_initial.sql) run; verified with `\dt`.
-- [ ] Redis reachable from Railway.
-- [ ] WorkOS production app configured with iter.dev redirect URI.
-- [ ] All LLM provider keys verified with a smoke call.
-- [ ] R2 bucket created via `wrangler r2 bucket create iter-archive-prod`; versioning + lifecycle (Infrequent Access at 1y) applied.
-- [ ] R2 API token issued (read-only for analytics; separate read/write token for the Go binary's archive role).
-- [ ] Modal scoring function deployed; warm pool live.
-- [ ] BetterStack monitors created for: /health, suggest P99, error rate, scoring batch, Postgres connections, WS connection count, trufflehog scan failure rate, **R2 storage (≥80% of 10 GB), R2 Class A ops (≥80% of 1M/mo), R2 Class B ops (≥80% of 10M/mo), R2 egress anomaly (>2× 7-day rolling baseline)**.
-- [ ] BetterStack on-call configured: email to founder.
-- [ ] status.iter.dev published.
-- [ ] Langfuse self-hosted on Railway, accessible at langfuse.iter.dev.
-- [ ] GitHub webhook configured for the iter repo (for outcome attachment when Iter dogfoods itself).
-- [ ] Linear webhook configured.
-- [ ] Domain DNS verified.
-- [ ] TLS cert provisioned (Railway handles).
-- [ ] Runbooks committed to repo.
-- [ ] On-call founder has read every runbook.
+| Check | dev | staging | production |
+|---|---:|---:|---:|
+| Railway environment exists. | [x] | [x] | [x] |
+| Postgres service provisioned. | [x] | [x] | [x] |
+| Redis service provisioned. | [x] | [x] | [x] |
+| Postgres extensions verified: `pgvector`, `pgcrypto`, `citext`. | [x] | [x] | [x] |
+| Migrations run through current goose version; schema verified with `\dt`. | [x] | [x] | [x] |
+| `iter_batch` role exists with `BYPASSRLS`. | [x] | [x] | [x] |
+| `iter_app` role exists with `NOSUPERUSER NOBYPASSRLS` + table grants. | [x] | [x] | [x] |
+| `scripts/provision-app-role.sh` run: `DATABASE_URL` (iter_app), `DATABASE_URL_BATCH` (iter_batch), and `DATABASE_URL_SUPERUSER` (postgres) set in Railway. | [x] | [x] | [x] |
+| `scripts/verify-rls-bypass.sh` passes against the live Railway DB. | [x] | [x] | [x] |
+| `REDIS_URL` set on `iter-server`. | [x] | [x] | [x] |
+| R2 free-tier guardrail vars set. | [x] | [x] | [x] |
+| WorkOS app configured with matching redirect URI. | [ ] | [ ] | [ ] |
+| All LLM provider keys verified with a smoke call. | [ ] | [ ] | [ ] |
+| R2 bucket created via `wrangler r2 bucket create iter-archive-prod`; versioning + lifecycle (Infrequent Access at 1y) applied. | [ ] | [ ] | [ ] |
+| R2 API token issued (read-only for analytics; separate read/write token for the Go binary's archive role). | [ ] | [ ] | [ ] |
+| Modal scoring function deployed; warm pool live. | [ ] | [ ] | [ ] |
+| BetterStack monitors created for: /health, suggest P99, error rate, scoring batch, Postgres connections, WS connection count, trufflehog scan failure rate, **R2 storage (≥80% of 10 GB), R2 Class A ops (≥80% of 1M/mo), R2 Class B ops (≥80% of 10M/mo), R2 egress anomaly (>2× 7-day rolling baseline)**. | [ ] | [ ] | [ ] |
+| BetterStack on-call configured: email to founder. | [ ] | [ ] | [ ] |
+| status.iter.dev published. | n/a | n/a | [ ] |
+| Langfuse self-hosted on Railway, accessible at langfuse.iter.dev. | [ ] | [ ] | [ ] |
+| GitHub webhook configured for the iter repo (for outcome attachment when Iter dogfoods itself). | [ ] | [ ] | [ ] |
+| Linear webhook configured. | [ ] | [ ] | [ ] |
+| Domain DNS verified. | n/a | [ ] | [ ] |
+| TLS cert provisioned (Railway handles). | n/a | [ ] | [ ] |
+| Runbooks committed to repo. | [ ] | [ ] | [ ] |
+| On-call founder has read every runbook. | n/a | n/a | [ ] |

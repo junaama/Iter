@@ -45,3 +45,26 @@ Specifically:
 ## User stories addressed
 
 Foundation for 060 (Railway CD), 061 (DNS), 062 (BetterStack monitor). Required for the §9 Step 6 e2e tests that hit staging.
+
+## Worker note — 2026-05-22
+
+Partially completed and blocked on missing production-grade secrets/HITL provider setup:
+
+- Created Railway environments `dev`, `staging`, and `production` under project `iter`.
+- Provisioned canonical data-plane services:
+  - `dev`: Postgres `Postgres-IVFh`, Redis `Redis`
+  - `staging`: Postgres `Postgres-f-fd`, Redis `Redis-B2wt`
+  - `production`: Postgres `Postgres`, Redis `Redis-6Z2f`
+- Ran goose migrations through version 9 on all three canonical Postgres services.
+- Verified `citext`, `pgcrypto`, and `vector` on all three canonical Postgres services.
+- Ran `scripts/provision-app-role.sh` on all three canonical Postgres services.
+- Ran `scripts/verify-rls-bypass.sh` successfully on all three canonical Postgres services.
+- Populated `iter-server` with DB/Redis URLs and safe base vars in all three environments.
+- Populated `dev` placeholders for provider/webhook/observability secrets.
+- Copied existing production WorkOS/R2 values to `staging` and refreshed them in `production` without printing secret values.
+- Updated `deploy.md` with the three-environment split and environment-aware checklist.
+- Hardened `scripts/provision-app-role.sh` so it no longer prints generated role passwords or credential-bearing verify commands.
+
+Remaining blocker:
+
+- `staging` and `production` still lack production-grade values for LLM provider keys, Voyage, Modal, webhook signing secrets, BetterStack, and Langfuse keys. The issue explicitly disallows inventing production/staging secrets, so this should be finished by a HITL operator or a worker with those secrets available.
