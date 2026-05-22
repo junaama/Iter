@@ -394,8 +394,16 @@ func TestVerify_NewVerifier_Validation(t *testing.T) {
 	}{
 		{"missing jwks url", auth.VerifierConfig{Issuer: "x", Audience: "y"}},
 		{"missing issuer", auth.VerifierConfig{JWKSURL: "x", Audience: "y"}},
-		{"missing audience", auth.VerifierConfig{JWKSURL: "x", Issuer: "y"}},
+		// Audience is OPTIONAL — WorkOS AuthKit JWTs omit the aud
+		// claim. A missing-audience config must succeed; see
+		// verifier.go NewVerifier comments.
 	}
+	t.Run("audience-optional accepts empty", func(t *testing.T) {
+		_, err := auth.NewVerifier(auth.VerifierConfig{JWKSURL: "x", Issuer: "y"})
+		if err != nil {
+			t.Fatalf("audience-empty config should succeed; got: %v", err)
+		}
+	})
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			if _, err := auth.NewVerifier(tc.cfg); err == nil {

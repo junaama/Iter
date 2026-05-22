@@ -92,9 +92,16 @@ func NewVerifier(cfg VerifierConfig) (*Verifier, error) {
 	if cfg.Issuer == "" {
 		return nil, errors.New("auth: VerifierConfig.Issuer is required")
 	}
-	if cfg.Audience == "" {
-		return nil, errors.New("auth: VerifierConfig.Audience is required")
-	}
+	// Audience is OPTIONAL. WorkOS AuthKit-issued JWTs do not include an
+	// `aud` claim (verified against
+	// https://workos.com/docs/reference/authkit/session-tokens/jwks —
+	// the example payload has `client_id` instead). When Audience is
+	// empty we skip the WithAudience option below, and verification
+	// still pins to the configured Issuer + the JWKS URL (which itself
+	// is keyed by client_id, so a valid signature implicitly proves
+	// the token was issued for our application). Leaving this field
+	// settable lets non-AuthKit OIDC providers (or a future WorkOS
+	// change) opt back in without code edits.
 	if cfg.FreshTTL <= 0 {
 		cfg.FreshTTL = defaultFreshTTL
 	}
@@ -230,15 +237,19 @@ func (v *Verifier) Verify(ctx context.Context, raw string) (contracts.Principal,
 
 	// jwt.Parse handles signature, exp, nbf, iss, aud validation. We pass the
 	// JWKS via WithKeySet so it picks the matching kid; the leeway absorbs
-	// small clock skew between WorkOS and us.
-	tok, err := jwt.Parse(
-		[]byte(raw),
+	// small clock skew between WorkOS and us. WithAudience is conditional:
+	// AuthKit-issued JWTs don't include `aud`, and forcing the check would
+	// reject every real token.
+	opts := []jwt.ParseOption{
 		jwt.WithKeySet(set),
 		jwt.WithIssuer(v.cfg.Issuer),
-		jwt.WithAudience(v.cfg.Audience),
 		jwt.WithAcceptableSkew(v.cfg.Leeway),
 		jwt.WithClock(jwtClock{now: v.cfg.Now}),
-	)
+	}
+	if v.cfg.Audience != "" {
+		opts = append(opts, jwt.WithAudience(v.cfg.Audience))
+	}
+	tok, err := jwt.Parse([]byte(raw), opts...)
 	if err != nil {
 		return contracts.Principal{}, classifyJWTError(err)
 	}
