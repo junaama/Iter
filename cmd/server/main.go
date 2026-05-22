@@ -21,6 +21,7 @@ import (
 
 	"github.com/iter-dev/iter/internal/app"
 	"github.com/iter-dev/iter/internal/llm"
+	iredis "github.com/iter-dev/iter/internal/redis"
 	"github.com/iter-dev/iter/pkg/contracts"
 )
 
@@ -48,6 +49,35 @@ func main() {
 		Logger:       logger,
 		BuildVersion: version,
 		LLM:          buildLLMRouter(logger),
+	}
+
+	// Wire Redis when REDIS_URL is set; otherwise log and continue with a
+	// nil client. Components that need Redis (ingestion consumer, embed
+	// worker, suggest cache fallback) MUST nil-check at use site — see
+	// internal/app.Deps.Redis. This soft-fail is deliberately scoped to
+	// early bring-up where REDIS_URL may not yet be provisioned; once
+	// issue 030 lands the /health endpoint, an unreachable Redis flips
+	// the probe to "down" and traffic is shed at the LB.
+	if url := os.Getenv("REDIS_URL"); url != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		cfg, err := iredis.ConfigFromURL(url)
+		if err != nil {
+			cancel()
+			logger.Error("REDIS_URL is set but invalid; continuing without Redis", "err", err)
+		} else if client, err := iredis.NewClient(ctx, cfg); err != nil {
+			cancel()
+			logger.Error("REDIS_URL is set but ping failed; continuing without Redis", "err", err)
+		} else {
+			cancel()
+			deps.Redis = client
+			defer func() {
+				if err := client.Close(); err != nil {
+					logger.Warn("redis client close", "err", err)
+				}
+			}()
+		}
+	} else {
+		logger.Warn("REDIS_URL is unset; running without Redis (ingestion / cache disabled)")
 	}
 
 	port := os.Getenv("PORT")
