@@ -1,79 +1,65 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for Claude Code when working in this repository.
 
 After any change, make a conventional commit scoped to the work you did with the files you touched.
 
-## Repository state
+## State
 
-This is a **design-stage** repository. No application code, build system, tests, or CI exist yet. The artifacts in this directory are the binding source of truth for what Iter v1 will be:
+Iter v1 is implementation-stage, not design-stage. The repo has a Go module/server, Postgres migrations, Redis-backed workers, REST/WebSocket/webhook handlers, ingestion/redaction/embedding/scoring/archive code, and a SwiftUI macOS app plus daemon under `mac/`.
 
-| File | Role |
-|---|---|
-| `ARCHITECTURE.md` | The spec. Source of truth for v1 scope. When implementation drifts, update the doc. |
-| `DECISIONS.md` | Decision log. Every line is binding; change the doc and the artifact together. |
-| `contracts.py` | Wire types (pydantic). Daemon/CLI/dashboard/webhook boundary. The only place untyped JSON is allowed. |
-| `migrations/` | Versioned Postgres migrations (goose). `0001_initial.sql` is the initial schema — `pgvector`, `pgcrypto`, `citext`, RLS on every tenant-scoped table. |
-| `Makefile` | Migration + local-db helpers (`make db-up`, `make migrate-up`, `make db-verify`). |
-| `deploy.md` | Hosting + env vars + rollback. Railway-centric. |
-| `testing.md` | Test plan (Go-based, not yet implemented). |
-| `DESIGN.md` | Visual language + locked design tokens for the SwiftUI app. Points at the prototype in `design/dashboard-prototype/`. |
+Docs are binding. When behavior changes, update the matching spec, decision, contract, deployment, or design artifact in the same commit.
 
-Build commands referenced in `testing.md` and `deploy.md` (`make test`, `make mac-release`, `railway up`) **do not work yet** — there is no `go.mod`, no Mac app project. Do not run them. The only Makefile targets that work today are the migration helpers documented in `make help`. If asked to implement the rest, the build order is in `ARCHITECTURE.md` §9.
+Key locations:
 
-## Product in one paragraph
+- `ARCHITECTURE.md`, `DECISIONS.md`, `DESIGN.md`, `deploy.md` - product, architecture, design, and ops truth.
+- `contracts.py`, `pkg/contracts/` - daemon, CLI, server, dashboard, and webhook wire contracts.
+- `cmd/`, `internal/`, `pkg/` - Go binaries, services, workers, and packages.
+- `migrations/`, `scripts/verify-migration.sh` - goose schema, RLS, pgvector, and verifier.
+- `mac/IterApp/` - SwiftUI app, daemon client, and design system.
+- `issues/` - claim-based work queue.
 
-Iter is a Mac app for teams using coding agents (Claude Code, Codex, Pi, OpenCode, Gemini CLI). A local daemon ingests agent traces from on-disk session files, redacts secrets via trufflehog before any cloud sync, scores outcomes, and surfaces prompt refinements via `iter suggest` at task-start. Distributed via iter.dev. Primary buyer is the team; solo devs get a local-only free tier.
+## Product
 
-## Target architecture (not yet built)
+Iter is a Mac app for teams using coding agents such as Claude Code, Codex, Pi, OpenCode, and Gemini CLI. A local daemon ingests traces, redacts secrets before cloud sync, scores outcomes, and surfaces prompt refinements through `iter suggest`.
 
-- **One Go binary** on Railway runs: WebSocket gateway (daemon ↔ cloud), `iter suggest` REST API, webhook receivers (GitHub + Linear), ingestion processor, embedding worker, dashboard API, archive cron.
-- **Postgres 16 + pgvector** (single store at v1) — HNSW index on `session_embeddings`. RLS enforced via per-transaction `SET LOCAL app.current_tenant = '<uuid>'`. Privileged `iter_batch` role has `BYPASSRLS` for nightly scoring + archive only; never reachable from request path.
-- **Redis** as cache and Redis Streams durable queue (no Kafka/NATS/SQS).
-- **Modal** for nightly scoring batch (warm pool N=2, GPU-ready).
-- **WorkOS** for auth (device-code flow for CLI/daemon; tokens carry `tenant_id` claim, stored in macOS Keychain).
-- **SwiftUI** native Mac app + daemon. IPC over Unix domain socket. Daemon writes traces to local SQLite WAL before sending; replays on WS reconnect.
+## Common checks
 
-Architecture is sized for ~5K engineers. Migration triggers to ~25K are documented in `ARCHITECTURE.md` §8 — they are monitoring thresholds, **not** v1 build targets. Do not pre-build for 25K.
+- Go: targeted package tests, or `go test ./...`.
+- Repo checks: `make test`, `make lint`, `make test-rls`, `make test-redis`.
+- Migrations: `make migrate-up`, `make db-verify`, and `scripts/verify-migration.sh`.
+- SwiftUI: `swiftlint lint mac/IterApp` and `xcodebuild -project mac/IterApp.xcodeproj -scheme IterApp -configuration Debug -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO build`.
+- Mac dev launch: `HEADLESS=1 make mac-dev` for CI-style verification.
 
-## Locked invariants
+## Shared issue workflow
 
-These are decided. Don't propose alternatives without explicit direction:
+- Claim one AFK issue before exploring: move it from `issues/` to `issues/in-progress/`.
+- Do not pick HITL, deferred, blocked, or already claimed issues.
+- Commit with a conventional commit message.
+- Release the issue before exit: move complete work to `issues/done/`, or return it to `issues/` with a blocker note.
+- In a dirty shared tree, preserve unrelated edits and stage only task-local files or hunks.
 
-- **Confidence thresholds** (`contracts.py:86-87`): `<0.50` suppress, `0.50–0.80` advisory, `≥0.80` replace. Clients call the pure `suggestion_action(confidence, refined_prompt)` decision function — never reimplement the thresholds elsewhere.
-- **Three-tier redaction classification**: `clean | strippable | dirty`. Only `clean` and successfully-redacted `strippable` records reach the cloud. `dirty` stays on-device.
-- **Tenant isolation**: RLS on every tenant-scoped table. New tables MUST add a `tenant_id` column, an RLS policy, and the cascade-delete FK to `tenants(id)`.
-- **`iter suggest` latency budget**: ≤1s P99 end-to-end. Budget breakdown in `ARCHITECTURE.md` §2.
-- **Retention**: 90 days hot in Postgres, then Cloudflare R2 via `archive_pointers` (column: `object_uri`). Scored summaries kept indefinitely. R2 free-tier guardrail + 80% alerts documented in `deploy.md` "R2 usage monitoring."
-- **Stacks** capture wrapped solutions (harnesses, skills, doc references, notes) — **never** raw configs, env values, secrets, or MCP credentials.
-- **Suggestions never inject into a terminal directly** — clipboard only. UI wording is "Copy to clipboard," not "Replace."
-- **Wire formats**: REST/JSON for CLI/dashboard/webhooks, WebSocket for daemon↔cloud. **No** GraphQL, gRPC, SSE, public API, or NL search across sessions at v1.
-- **Idempotency-Key** required on all POST endpoints; **HMAC verification** required on webhooks.
-- **Dangerous-pattern deny-list** (e.g. `rm -rf`, `DROP TABLE`, `git push --force`): blocked silently in suggestion output; logged as security event.
+## Invariants
 
-## Working with `contracts.py`
-
-This file is the boundary. Any change to a wire type is a breaking change to one or more of: the daemon, the CLI, the dashboard, the Go server, or external webhook senders. When editing:
-
-- Keep it pure: no I/O, no business logic, no impure handlers.
-- All models use `ConfigDict(extra="forbid")` except where `extra="allow"` is intentional (e.g. `ScoreSignals` — signals evolve) or `extra="ignore"` (inbound webhooks — third-party payloads).
-- Discriminated unions use `Field(discriminator="type")`. Add new WS message types to both the type itself **and** the `ClientMessage`/`ServerMessage` `Union`.
-- The Python file exists because contracts predate the Go implementation. When the Go server is written, mirror these types in `pkg/contracts` (Go). Until then, `contracts.py` is canonical.
-
-## Working with `migrations/`
-
-- `migrations/0001_initial.sql` is the initial schema (goose format). Shipped migrations are immutable — schema changes go into a new `migrations/NNNN_<name>.sql` file with `-- +goose Up` and `-- +goose Down` sections.
-- Apply with `make migrate-up` (defaults to local docker via `make db-up`; override `DATABASE_URL` to target Railway). Verify invariants with `make db-verify`.
-- New tenant-scoped tables MUST: include `tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE`, `ALTER TABLE ... ENABLE ROW LEVEL SECURITY`, and a `tenant_isolation` policy using `current_setting('app.current_tenant')::uuid`. Add the table to the verifier in `scripts/verify-migration.sh`.
-- HNSW indexes (`session_embeddings`, `suggestions.source_embedding`) use `m=16, ef_construction=64`. Rebuild plan when row count >10M is documented in `ARCHITECTURE.md` §8.
-- Cascade-delete chain matters for the post-ingestion-leak failure mode: deleting a `session_id` must cascade to events, embeddings, scores, and outcomes. Verify when adding new session-linked tables.
+- Suggestion thresholds live in the pure decision function: Python `suggestion_action(confidence, refined_prompt)` and Go `suggest.SuggestionAction`. Do not reimplement the threshold literals elsewhere.
+- Redaction is `clean | strippable | dirty`; only `clean` and redacted `strippable` records reach the cloud.
+- Tenant-scoped tables require `tenant_id`, cascade delete to `tenants(id)`, RLS, and verifier coverage.
+- `iter suggest` has a 1s P99 end-to-end latency budget.
+- Retention is 90 days hot in Postgres, then Cloudflare R2 via `archive_pointers.object_uri`; scored summaries stay indefinitely.
+- Stacks can capture harnesses, skills, doc references, and notes, never raw configs, env values, secrets, or MCP credentials.
+- Suggestions never inject into a terminal directly; UI wording is "Copy to clipboard."
+- Wire formats are REST/JSON for CLI, dashboard, and webhooks; WebSocket for daemon to cloud. No GraphQL, gRPC, SSE, public API, or natural-language search across sessions in v1.
+- `Idempotency-Key` is required on POST endpoints; webhooks require HMAC verification.
+- Dangerous suggestions such as `rm -rf`, `DROP TABLE`, and `git push --force` are blocked silently and logged as security events.
+- `contracts.py` stays the canonical compatibility contract; mirror shared wire changes in `pkg/contracts/`.
+- Shipped migrations are immutable; add schema changes in a new goose migration.
+- Preserve the cascade-delete chain from sessions to events, embeddings, scores, outcomes, and any new session-linked data.
 
 ## Where to look first
 
-- "What does v1 include?" → `ARCHITECTURE.md` §1.
-- "Why was X decided that way?" → `DECISIONS.md`, organized by phase.
-- "What's the build sequence?" → `ARCHITECTURE.md` §9.
-- "How does failure mode X behave?" → `ARCHITECTURE.md` §7 table.
-- "What's the API contract for X?" → `contracts.py` first, `ARCHITECTURE.md` §5 second.
-- "What color / font / row height / radius should this use?" → `DESIGN.md`. Don't introduce new tokens without updating it first.
-- "What does the Me/Team/Session screen look like?" → `design/dashboard-prototype/project/`. Reference only — pixel-match in SwiftUI, don't port HTML/CSS structure.
+- V1 scope: `ARCHITECTURE.md` section 1.
+- Decisions: `DECISIONS.md`.
+- API contracts: `contracts.py`, then `pkg/contracts/`.
+- Failure modes: `ARCHITECTURE.md` section 7.
+- Build order: `ARCHITECTURE.md` section 9.
+- Visual language: `DESIGN.md`, then `mac/IterApp/DesignSystem/`.
