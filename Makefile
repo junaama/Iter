@@ -40,9 +40,10 @@ help:
 	@echo "Benchmark targets (on-demand, NOT for CI):"
 	@echo "  make bench-hnsw    HNSW 10K-vector baseline (writes benchmarks/hnsw-10k-baseline.md)"
 	@echo ""
-	@echo "Modal targets (nightly scoring batch — stub at v1):"
-	@echo "  make modal-test    Local pytest against modal/scoring.py (no credentials needed)"
-	@echo "  make modal-deploy  Deploy stub to iter-scoring Modal app (requires token)"
+	@echo "Modal targets (nightly scoring batch):"
+	@echo "  make modal-test           Local pytest against modal/scoring.py (no credentials needed)"
+	@echo "  make modal-deploy         Deploy iter-scoring Modal app (requires token; HITL)"
+	@echo "  make gen-golden-signals   Regenerate the Go-canonical signals fixture"
 	@echo ""
 	@echo "DATABASE_URL=$(DATABASE_URL)"
 
@@ -156,20 +157,33 @@ test-redis:
 bench-hnsw:
 	@DATABASE_URL="$(DATABASE_URL)" bash scripts/bench-hnsw.sh
 
-# modal-test: local pytest against the Modal scoring stub. Asserts the
-# module imports, the modal.App is real, and the stub return shape is
-# stable. Requires `uv pip install -r modal/requirements.txt` first.
+# modal-test: local pytest against the Modal scoring batch (issue 046).
+# Covers the pure aggregator + composite via a Go-canonical golden file
+# (modal/testdata/golden_signals.json), DB layer via mocked psycopg
+# connections, and the scheduled-function wiring. No Modal credentials
+# and no DB needed. Requires `uv pip install -r modal/requirements.txt`
+# (or any venv where `modal` + `pytest` are installed) on $PATH first.
 # Runs from inside modal/ so the test can `import scoring` directly.
-# Does NOT contact Modal; safe to wire into CI.
+# Safe to wire into CI.
 .PHONY: modal-test
 modal-test:
-	@cd modal && python -m pytest scoring_test.py -v
+	@cd modal && uv run pytest scoring_test.py -v
 
 # modal-deploy: ships modal/scoring.py to the iter-scoring Modal app.
 # Requires either ~/.modal.toml (from `modal token new`) or
-# MODAL_TOKEN_ID / MODAL_TOKEN_SECRET in the environment.
-# This is the stub deploy; for the real scorer (issue 046) bump
-# min_containers per ARCHITECTURE.md §8 (N=2 warm pool).
+# MODAL_TOKEN_ID / MODAL_TOKEN_SECRET in the environment. After issue
+# 046 lands this deploys the REAL scorer (warm pool N=2, cron 02:00
+# UTC). HITL: do not run from CI — counts against billable Modal
+# compute.
 .PHONY: modal-deploy
 modal-deploy:
 	@modal deploy modal/scoring.py
+
+# gen-golden-signals: regenerate the Go-canonical golden-signals fixture
+# consumed by modal/scoring_test.py. Re-run any time internal/signals
+# or internal/scoring changes; commit the resulting JSON alongside the
+# Go change so the Python tests stay in sync.
+.PHONY: gen-golden-signals
+gen-golden-signals:
+	@go run scripts/gen-golden-signals.go > modal/testdata/golden_signals.json
+	@echo "wrote modal/testdata/golden_signals.json"

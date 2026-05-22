@@ -4,6 +4,15 @@
 # bump to catch breaking API changes.
 modal==1.2.6
 
+# psycopg 3 — sync DB driver for the nightly scoring batch.
+# Picked over asyncpg because the batch has no concurrency requirement,
+# psycopg3 ships first-class jsonb + dict-row support out of the box,
+# and the dep graph is smaller. Decision recorded in DECISIONS.md
+# ("DB driver for Modal batch (issue 046)"). The `[binary]` extra
+# ships pre-built wheels so the Modal image build is fast and does
+# not need libpq-dev installed at build time.
+psycopg[binary]==3.2.3
+
 # Test-only — kept here so a single `uv pip install -r modal/requirements.txt`
 # also sets up `pytest` for `make modal-test`. Move to a split
 # `requirements-dev.txt` if the prod image grows.

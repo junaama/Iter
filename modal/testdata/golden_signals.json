@@ -1,0 +1,301 @@
+[
+  {
+    "name": "empty",
+    "events": null,
+    "signals": {
+      "durability_7d": null,
+      "durability_30d": null,
+      "peer_reuse_count": null,
+      "self_reuse_count": null,
+      "override_rate": null,
+      "suggestion_acceptance": null
+    },
+    "composite": 0
+  },
+  {
+    "name": "single_peer_reuse",
+    "events": [
+      {
+        "id": "e1",
+        "event_type": "peer_reuse"
+      }
+    ],
+    "signals": {
+      "durability_7d": null,
+      "durability_30d": null,
+      "peer_reuse_count": 1,
+      "self_reuse_count": null,
+      "override_rate": null,
+      "suggestion_acceptance": null
+    },
+    "composite": 0.1889791262841405
+  },
+  {
+    "name": "single_self_reuse",
+    "events": [
+      {
+        "id": "e1",
+        "event_type": "self_reuse"
+      }
+    ],
+    "signals": {
+      "durability_7d": null,
+      "durability_30d": null,
+      "peer_reuse_count": null,
+      "self_reuse_count": 1,
+      "override_rate": null,
+      "suggestion_acceptance": null
+    },
+    "composite": 0.09448956314207024
+  },
+  {
+    "name": "override_rate_25pct",
+    "events": [
+      {
+        "id": "e1",
+        "event_type": "turn_completed"
+      },
+      {
+        "id": "e2",
+        "event_type": "turn_completed"
+      },
+      {
+        "id": "e3",
+        "event_type": "turn_completed"
+      },
+      {
+        "id": "e4",
+        "event_type": "turn_completed"
+      },
+      {
+        "id": "e5",
+        "event_type": "user_override"
+      }
+    ],
+    "signals": {
+      "durability_7d": null,
+      "durability_30d": null,
+      "peer_reuse_count": null,
+      "self_reuse_count": null,
+      "override_rate": 0.25,
+      "suggestion_acceptance": null
+    },
+    "composite": 0.18750000000000003
+  },
+  {
+    "name": "override_rate_clamps_to_one",
+    "events": [
+      {
+        "id": "e1",
+        "event_type": "turn_completed"
+      },
+      {
+        "id": "e2",
+        "event_type": "user_override"
+      },
+      {
+        "id": "e3",
+        "event_type": "user_override"
+      },
+      {
+        "id": "e4",
+        "event_type": "user_override"
+      }
+    ],
+    "signals": {
+      "durability_7d": null,
+      "durability_30d": null,
+      "peer_reuse_count": null,
+      "self_reuse_count": null,
+      "override_rate": 1,
+      "suggestion_acceptance": null
+    },
+    "composite": 0
+  },
+  {
+    "name": "suggestion_acceptance_75pct",
+    "events": [
+      {
+        "id": "e1",
+        "event_type": "suggestion_accepted"
+      },
+      {
+        "id": "e2",
+        "event_type": "suggestion_accepted"
+      },
+      {
+        "id": "e3",
+        "event_type": "suggestion_accepted"
+      },
+      {
+        "id": "e4",
+        "event_type": "suggestion_rejected"
+      }
+    ],
+    "signals": {
+      "durability_7d": null,
+      "durability_30d": null,
+      "peer_reuse_count": null,
+      "self_reuse_count": null,
+      "override_rate": null,
+      "suggestion_acceptance": 0.75
+    },
+    "composite": 0.30000000000000004
+  },
+  {
+    "name": "full_mix",
+    "events": [
+      {
+        "id": "e1",
+        "event_type": "turn_completed"
+      },
+      {
+        "id": "e2",
+        "event_type": "turn_completed"
+      },
+      {
+        "id": "e3",
+        "event_type": "user_override"
+      },
+      {
+        "id": "e4",
+        "event_type": "peer_reuse"
+      },
+      {
+        "id": "e5",
+        "event_type": "peer_reuse"
+      },
+      {
+        "id": "e6",
+        "event_type": "self_reuse"
+      },
+      {
+        "id": "e7",
+        "event_type": "suggestion_accepted"
+      },
+      {
+        "id": "e8",
+        "event_type": "suggestion_rejected"
+      }
+    ],
+    "signals": {
+      "durability_7d": null,
+      "durability_30d": null,
+      "peer_reuse_count": 2,
+      "self_reuse_count": 1,
+      "override_rate": 0.5,
+      "suggestion_acceptance": 0.5
+    },
+    "composite": 0.45943907522683763
+  },
+  {
+    "name": "duplicate_ids_dedup",
+    "events": [
+      {
+        "id": "e1",
+        "event_type": "peer_reuse"
+      },
+      {
+        "id": "e1",
+        "event_type": "peer_reuse"
+      },
+      {
+        "id": "e1",
+        "event_type": "peer_reuse"
+      },
+      {
+        "id": "e2",
+        "event_type": "self_reuse"
+      }
+    ],
+    "signals": {
+      "durability_7d": null,
+      "durability_30d": null,
+      "peer_reuse_count": 1,
+      "self_reuse_count": 1,
+      "override_rate": null,
+      "suggestion_acceptance": null
+    },
+    "composite": 0.28346868942621073
+  },
+  {
+    "name": "empty_ids_not_deduped",
+    "events": [
+      {
+        "id": "",
+        "event_type": "peer_reuse"
+      },
+      {
+        "id": "",
+        "event_type": "peer_reuse"
+      },
+      {
+        "id": "",
+        "event_type": "peer_reuse"
+      }
+    ],
+    "signals": {
+      "durability_7d": null,
+      "durability_30d": null,
+      "peer_reuse_count": 3,
+      "self_reuse_count": null,
+      "override_rate": null,
+      "suggestion_acceptance": null
+    },
+    "composite": 0.42141370588570504
+  },
+  {
+    "name": "subagent_events_ignored_for_parent",
+    "events": [
+      {
+        "id": "p1",
+        "event_type": "peer_reuse"
+      },
+      {
+        "id": "c1",
+        "event_type": "peer_reuse",
+        "is_subagent": true
+      },
+      {
+        "id": "c2",
+        "event_type": "self_reuse",
+        "is_subagent": true
+      }
+    ],
+    "signals": {
+      "durability_7d": null,
+      "durability_30d": null,
+      "peer_reuse_count": 1,
+      "self_reuse_count": null,
+      "override_rate": null,
+      "suggestion_acceptance": null
+    },
+    "composite": 0.1889791262841405
+  },
+  {
+    "name": "irrelevant_events_zero_signals",
+    "events": [
+      {
+        "id": "e1",
+        "event_type": "prompt_sent"
+      },
+      {
+        "id": "e2",
+        "event_type": "tool_call"
+      },
+      {
+        "id": "e3",
+        "event_type": "git_commit"
+      }
+    ],
+    "signals": {
+      "durability_7d": null,
+      "durability_30d": null,
+      "peer_reuse_count": null,
+      "self_reuse_count": null,
+      "override_rate": null,
+      "suggestion_acceptance": null
+    },
+    "composite": 0
+  }
+]
