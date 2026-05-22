@@ -457,10 +457,17 @@ func seedTwoTenants(ctx context.Context, t *testing.T, super *sql.DB) (string, s
 			t.Fatalf("insert outcomes: %v", err)
 		}
 
+		// suggestion_hash mirrors repo.SuggestionHash:
+		// sha256(tenant_id_binary || source_prompt) — computed in SQL via
+		// pgcrypto's digest() so this seed doesn't depend on the repo
+		// package. Migration 0003 made suggestion_hash NOT NULL UNIQUE.
+		// We pass tenant_id twice (once as uuid, once as text) because
+		// pgx unifies the type of any single placeholder across the
+		// statement; using two slots keeps both casts unambiguous.
 		if _, err := super.ExecContext(ctx,
-			`INSERT INTO suggestions (tenant_id, source_prompt, source_embedding, refined_prompt, evidence_session_ids, created_at)
-			   VALUES ($1, $2, $3::vector, $4, ARRAY[$5::uuid], now())`,
-			tid, "source prompt for "+tid[:8], zerosVec.String(),
+			`INSERT INTO suggestions (tenant_id, suggestion_hash, source_prompt, source_embedding, refined_prompt, evidence_session_ids, created_at)
+			   VALUES ($1, digest(decode(replace($2,'-',''),'hex') || $3::bytea, 'sha256'), $3, $4::vector, $5, ARRAY[$6::uuid], now())`,
+			tid, tid, "source prompt for "+tid[:8], zerosVec.String(),
 			"refined prompt for "+tid[:8], sessionID,
 		); err != nil {
 			t.Fatalf("insert suggestions: %v", err)
