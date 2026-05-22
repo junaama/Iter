@@ -205,3 +205,59 @@ func (t *TestDB) SeedMembership(ctx context.Context, tb testing.TB, tenantID, us
 		tb.Fatalf("dbtest: seed membership: %v", err)
 	}
 }
+
+// SeedSession inserts a minimal session row under tenantID/userID and
+// returns its UUID. Added in 052 so the scoring/outcome/embedding
+// integration tests don't each re-implement the boilerplate. Default
+// classification is "clean" so RLS-scoped reads succeed without extra
+// setup; pass a non-zero startedAt if test ordering matters.
+//
+// Runs as superuser — no RLS to satisfy and no SET LOCAL needed. Test
+// helper only.
+func (t *TestDB) SeedSession(
+	ctx context.Context,
+	tb testing.TB,
+	tenantID, userID string,
+	startedAt time.Time,
+) string {
+	tb.Helper()
+	if startedAt.IsZero() {
+		startedAt = time.Now().UTC()
+	}
+	var id string
+	err := t.Super.QueryRowContext(ctx, `
+		INSERT INTO sessions (
+		  tenant_id, user_id, harness, model, tools,
+		  started_at, redacted_prompt, classification
+		) VALUES ($1, $2, 'claude_code', 'm', ARRAY[]::text[], $3, 'p', 'clean')
+		RETURNING id
+	`, tenantID, userID, startedAt).Scan(&id)
+	if err != nil {
+		tb.Fatalf("dbtest: seed session: %v", err)
+	}
+	return id
+}
+
+// SeedScore inserts a session_scores row directly via the superuser.
+// Used by tests that want to populate the trend / mean-composite paths
+// without driving the full InsertScore code path. composite must be in
+// [0,1].
+func (t *TestDB) SeedScore(
+	ctx context.Context,
+	tb testing.TB,
+	tenantID, sessionID, scorerVersion string,
+	composite float64,
+	scoredAt time.Time,
+) {
+	tb.Helper()
+	if scoredAt.IsZero() {
+		scoredAt = time.Now().UTC()
+	}
+	if _, err := t.Super.ExecContext(ctx, `
+		INSERT INTO session_scores (
+		  session_id, tenant_id, scorer_version, composite_score, signals, scored_at
+		) VALUES ($1, $2, $3, $4, '{}'::jsonb, $5)
+	`, sessionID, tenantID, scorerVersion, composite, scoredAt); err != nil {
+		tb.Fatalf("dbtest: seed score: %v", err)
+	}
+}
