@@ -22,6 +22,7 @@ import (
 	"github.com/iter-dev/iter/internal/api"
 	"github.com/iter-dev/iter/internal/app"
 	"github.com/iter-dev/iter/internal/db"
+	"github.com/iter-dev/iter/internal/embed"
 	"github.com/iter-dev/iter/internal/llm"
 	iredis "github.com/iter-dev/iter/internal/redis"
 	"github.com/iter-dev/iter/pkg/contracts"
@@ -96,6 +97,11 @@ func main() {
 		logger.Warn("REDIS_URL is unset; running without Redis (ingestion / cache disabled)")
 	}
 
+	// Wire the embedding router. Built after Redis so it can consume the
+	// shared client for the SHA256 cache. A nil Redis is acceptable —
+	// NewCache returns a nil *Cache and the router runs cache-disabled.
+	deps.Embed = buildEmbedRouter(logger, deps.Redis)
+
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = defaultPort
@@ -153,6 +159,51 @@ func buildLLMRouter(logger *slog.Logger) *llm.Router {
 	return llm.NewRouter(llm.RouterConfig{
 		Providers: providers,
 		Priority:  priority,
+	})
+}
+
+// buildEmbedRouter constructs the embedding router from environment vars.
+// Only providers whose API key env var is set are registered; missing keys
+// are tolerated (non-prod boots) — the router falls through to the next
+// provider in the chain at request time.
+//
+// Provider priority chain (DECISIONS.md "Embedding provider chain
+// (issue 054)"):
+//
+//	voyage → openai → google
+//
+// Voyage is the v1 default (voyage-code-3, 1536-dim, matches the
+// session_embeddings.embedding vector(1536) column). OpenAI and Google
+// are stubs today, registered so the chain is wired and ready when their
+// HTTP implementations land. Breaker tuning matches LLM defaults (5
+// failures, 30s recovery).
+//
+// The shared *goredis.Client is passed through for the SHA256 cache; a
+// nil client is acceptable (cache-disabled in dev).
+func buildEmbedRouter(logger *slog.Logger, rdb embed.RedisLike) *embed.Router {
+	var providers []embed.Provider
+
+	if key := os.Getenv("VOYAGE_API_KEY"); key != "" {
+		providers = append(providers, embed.NewVoyageProvider(embed.VoyageConfig{APIKey: key}))
+	} else {
+		logger.Warn("VOYAGE_API_KEY not set; voyage provider unregistered (embedding chain has no real provider)")
+	}
+	if key := os.Getenv("OPENAI_API_KEY"); key != "" {
+		providers = append(providers, embed.NewOpenAIProvider(embed.OpenAIConfig{APIKey: key}))
+	}
+	if key := os.Getenv("GOOGLE_AI_API_KEY"); key != "" {
+		providers = append(providers, embed.NewGoogleProvider(embed.GoogleConfig{APIKey: key}))
+	}
+
+	var cache *embed.Cache
+	if rdb != nil {
+		cache = embed.NewCache(embed.CacheConfig{Redis: rdb})
+	}
+
+	return embed.NewRouter(embed.RouterConfig{
+		Providers: providers,
+		Priority:  []string{"voyage", "openai", "google"},
+		Cache:     cache,
 	})
 }
 
