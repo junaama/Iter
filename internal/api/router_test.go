@@ -107,6 +107,27 @@ func TestRouter_DashboardMeRegistered(t *testing.T) {
 	}
 }
 
+func TestRouter_DashboardTeamRegistered(t *testing.T) {
+	deps := app.Deps{
+		Logger:       slog.New(slog.NewTextHandler(io.Discard, nil)),
+		BuildVersion: "test",
+	}
+
+	r := api.NewRouter(deps)
+	found := false
+	if err := chi.Walk(r, func(method string, route string, _ http.Handler, _ ...func(http.Handler) http.Handler) error {
+		if method == http.MethodGet && route == "/v1/dashboard/team" {
+			found = true
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("walk router: %v", err)
+	}
+	if !found {
+		t.Fatalf("GET /v1/dashboard/team route not registered")
+	}
+}
+
 func TestServer_TimeoutsAndAddr(t *testing.T) {
 	srv := api.NewServer(":0", http.NewServeMux())
 	if srv.Addr() != ":0" {

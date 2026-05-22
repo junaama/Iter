@@ -107,6 +107,12 @@ func NewRouter(deps app.Deps) chi.Router {
 
 		authed.Get("/v1/dashboard/me", handler.DashboardMeHandler(deps))
 
+		// GET /v1/dashboard/team (issue 039) — team-wide aggregates.
+		// The route-level admin gate runs after auth + tenant context
+		// so it can verify the caller's tenant_users role inside the
+		// same RLS-scoped request transaction.
+		authed.With(requireAdmin(deps.Logger)).Get("/v1/dashboard/team", handler.DashboardTeamHandler(deps))
+
 		// Placeholder for any unrouted request until handlers land
 		// in 029+. 503 (not 404) so misconfigured callers reaching
 		// this binary today can distinguish "wrong URL" from

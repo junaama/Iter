@@ -286,21 +286,38 @@ class DashboardMeResponse(BaseModel):
     recent_sessions: list[DashboardRecentSession]
 
 
-class DashboardTeamResponse(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    tenant_id: UUID
-    members: list["TeamMemberAggregate"]
-
-
 class TeamMemberAggregate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     user_id: UUID
     display_name: str
-    sessions_7d: int
-    avg_score_7d: Optional[float]
-    contributor_weight: float
+    session_count_30d: int
+    mean_composite_score_30d: Optional[float]
+
+
+class TeamPatternAggregate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    pattern_id: UUID
+    preview: str
+    uses_count: int
+    tenants_used: int
+    avg_score: float
+
+
+class TeamInvite(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool
+    invite_link_template: str
+
+
+class DashboardTeamResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    members: list[TeamMemberAggregate]
+    top_patterns: list[TeamPatternAggregate]
+    invite: Optional[TeamInvite] = None
 
 
 DashboardTeamResponse.model_rebuild()
