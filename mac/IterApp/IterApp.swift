@@ -11,6 +11,8 @@ struct IterApp: App {
                 .preferredColorScheme(themeStore.preferredColorScheme)
         }
         .defaultSize(width: IterSpacing.windowMaxWidth, height: IterSpacing.windowMaxHeight)
+        .windowStyle(.hiddenTitleBar)
+        .windowResizability(.contentMinSize)
         .commands {
             #if DEBUG
             CommandMenu("Debug") {
