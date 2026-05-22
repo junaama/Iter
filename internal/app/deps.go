@@ -13,7 +13,11 @@
 // makes it cheap to grow without touching every handler signature.
 package app
 
-import "log/slog"
+import (
+	"log/slog"
+
+	"github.com/iter-dev/iter/internal/llm"
+)
 
 // Deps is the process-level dependency bag wired by cmd/server at boot and
 // passed to api.NewRouter (issue 028) and any other top-level constructors.
@@ -29,6 +33,12 @@ type Deps struct {
 	// and surfaced by the /health endpoint. Empty string is allowed in
 	// local `go run` builds and renders as "dev" in the health payload.
 	BuildVersion string
+
+	// LLM is the multi-provider router (issue 055). May be nil in tests
+	// that don't exercise the suggest path; handlers that require it
+	// must nil-check and return 503 (mapped to `no_suggestion_reason:
+	// llm_unavailable` by the suggest handler, ARCHITECTURE.md §7).
+	LLM *llm.Router
 
 	// Extension points (deferred):
 	//   DB     *pgxpool.Pool     // issue 049

@@ -20,6 +20,8 @@ import (
 	"time"
 
 	"github.com/iter-dev/iter/internal/app"
+	"github.com/iter-dev/iter/internal/llm"
+	"github.com/iter-dev/iter/pkg/contracts"
 )
 
 // version is injected at link time via:
@@ -45,6 +47,7 @@ func main() {
 	deps := app.Deps{
 		Logger:       logger,
 		BuildVersion: version,
+		LLM:          buildLLMRouter(logger),
 	}
 
 	port := os.Getenv("PORT")
@@ -70,6 +73,53 @@ func main() {
 		logger.Error("server exited with error", "err", err)
 		os.Exit(1)
 	}
+}
+
+// buildLLMRouter constructs the per-tier LLM router from environment vars.
+// Only providers whose API key env var is set are registered; missing keys
+// are tolerated (non-prod boots) — the router falls through to the next
+// provider in the chain at request time.
+//
+// Provider priority chain per tier (DECISIONS.md "LLM provider chain
+// (issue 055)"):
+//
+//	cheap_hot: anthropic → google → openai → together
+//	sonnet:    anthropic → openai
+//	opus:      anthropic
+//
+// Breaker tuning is the v1 default (5 consecutive failures → open;
+// 30s recovery delay → half-open).
+func buildLLMRouter(logger *slog.Logger) *llm.Router {
+	var providers []llm.Provider
+
+	if key := os.Getenv("ANTHROPIC_API_KEY"); key != "" {
+		providers = append(providers, llm.NewAnthropicProvider(llm.AnthropicConfig{APIKey: key}))
+	} else {
+		logger.Warn("ANTHROPIC_API_KEY not set; anthropic provider unregistered")
+	}
+	if key := os.Getenv("OPENAI_API_KEY"); key != "" {
+		providers = append(providers, llm.NewOpenAIProvider(llm.OpenAIConfig{APIKey: key}))
+	}
+	if key := os.Getenv("GOOGLE_AI_API_KEY"); key != "" {
+		providers = append(providers, llm.NewGoogleProvider(llm.GoogleConfig{APIKey: key}))
+	}
+	if key := os.Getenv("TOGETHER_API_KEY"); key != "" {
+		providers = append(providers, llm.NewTogetherProvider(llm.TogetherConfig{APIKey: key}))
+	}
+
+	// Declared chain regardless of which keys are present. The router
+	// silently skips any name that wasn't registered above ("unregistered"
+	// in the attempts log).
+	priority := map[contracts.LLMTier][]string{
+		contracts.LLMTierCheapHot: {"anthropic", "google", "openai", "together"},
+		contracts.LLMTierSonnet:   {"anthropic", "openai"},
+		contracts.LLMTierOpus:     {"anthropic"},
+	}
+
+	return llm.NewRouter(llm.RouterConfig{
+		Providers: providers,
+		Priority:  priority,
+	})
 }
 
 // run is split out so it can be unit-tested without exiting the process.
