@@ -53,12 +53,13 @@ type Deps struct {
 
 	// BatchDB is the BYPASSRLS Postgres pool, built from
 	// $DATABASE_URL_BATCH (iter_batch role). ONLY for cross-tenant
-	// jobs: nightly scoring (issue 046) and archive cron (issue 047).
-	// Never reachable from the request path; cmd/server leaves this
-	// nil today because the Modal worker (per ARCHITECTURE.md §9
-	// Step 4) owns its own connection rather than sharing the server
-	// pool. Reserved here so later wiring slices can populate it
-	// without re-shaping Deps.
+	// jobs: nightly scoring (issue 046, owned by the Modal worker which
+	// holds its own Python-side iter_batch connection) and the archive
+	// cron (issue 047, which consumes THIS pool). Never reachable from
+	// the request path. cmd/server populates BatchDB when
+	// DATABASE_URL_BATCH is set; when unset, the archive cron is
+	// skipped (warned, not fatal) so dev boots without R2 configuration
+	// still come up.
 	BatchDB *pgxpool.Pool
 
 	// LLM is the multi-provider router (issue 055). May be nil in tests
