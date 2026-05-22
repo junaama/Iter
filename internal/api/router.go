@@ -5,6 +5,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/iter-dev/iter/internal/api/middleware"
 	"github.com/iter-dev/iter/internal/app"
 )
 
@@ -21,6 +22,18 @@ import (
 // registration will not churn `NewRouter` itself.
 func NewRouter(deps app.Deps) chi.Router {
 	r := chi.NewRouter()
+
+	// Middleware stack per ARCHITECTURE.md §9 Step 4:
+	//   request_id → logger → recover → [auth → tenant → rate_limit → idempotency]
+	// Auth (031), tenant_context (032), rate_limit (033), idempotency (034)
+	// slot in here as later slices land. We register via chi's Use rather
+	// than wrapping the returned handler so subsequent per-route Use calls
+	// nest under this base chain.
+	r.Use(
+		middleware.RequestID,
+		middleware.Logger(deps.Logger),
+		middleware.Recover(deps.Logger),
+	)
 
 	// Placeholder for any unrouted request until handlers land in 029+.
 	// 503 (not 404) so misconfigured callers reaching this binary today
