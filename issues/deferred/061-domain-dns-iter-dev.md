@@ -1,12 +1,12 @@
 ---
-type: AFK
+type: DEFERRED
 depends-on:
   - 058-railway-staging-prod-environments
 ---
 
-# AFK — DNS via Railway + Cloudflare CLIs
+# DEFERRED — custom iter.dev DNS
 
-This issue is CLI-ready now that `railway` and `wrangler` are authenticated in the terminal. Workers may use Railway domain commands plus Cloudflare/Wrangler or Cloudflare API-backed CLI flows to configure DNS and verify TLS. If `iter.dev` is not registered, not delegated to the available Cloudflare account, or the zone cannot be managed by the authenticated CLI, return the issue with a blocker note instead of attempting registrar work.
+Custom `iter.dev` DNS is not a v1 blocker. Use Railway-generated domains for staging/production until the domain registration/delegation decision is ready. This issue tracks the later custom-domain cutover.
 
 ## Parent PRD
 
@@ -14,7 +14,7 @@ This issue is CLI-ready now that `railway` and `wrangler` are authenticated in t
 
 ## What to build
 
-DNS for the production apex, the staging subdomain, and a placeholder for the status page. TLS is handled by Railway automatically once DNS resolves.
+DNS for the production apex, the staging subdomain, and a placeholder for the status page. TLS is handled by Railway automatically once DNS resolves. Until this lands, docs and monitors should point at Railway-generated domains.
 
 Specifically:
 
@@ -44,6 +44,7 @@ Specifically:
 ## Blocked by
 
 - Blocked by `issues/058-railway-staging-prod-environments.md`
+- Deferred until custom domain ownership/delegation is ready; not a blocker for Railway-generated-domain v1 staging or production.
 
 ## User stories addressed
 
