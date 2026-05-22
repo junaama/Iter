@@ -62,6 +62,28 @@ type SessionFilter struct {
 	Harness *string    // optional: exact-match on harness
 }
 
+// SessionSummaryFilter narrows the API-facing session summary list. Empty
+// fields are ignored; the caller is responsible for role-aware defaults such
+// as forcing non-admin users to their own user_id and excluding dirty rows.
+type SessionSummaryFilter struct {
+	UserID         *uuid.UUID
+	Harness        *string
+	StartedAfter   *time.Time
+	StartedBefore  *time.Time
+	MinScore       *float64
+	MaxScore       *float64
+	HasOutcome     *string
+	Classification *string
+	ExcludeDirty   bool
+}
+
+// SessionListRow is the storage projection behind SessionSummary. LatestScore
+// is nil when the session has not been scored yet.
+type SessionListRow struct {
+	Session     Session
+	LatestScore *Score
+}
+
 // InsertSession inserts a sessions row. The caller fills in TenantID,
 // UserID, redacted prompts, harness/model/classification, and any
 // optional fields. ID, IngestedAt are server-assigned.
@@ -274,6 +296,93 @@ func ListSessions(
 	return scanSessions(rows)
 }
 
+// ListSessionSummaries executes the structured GET /v1/sessions filters in a
+// single query. Latest score is fetched with a LATERAL join so score range
+// filtering does not trigger an N+1 read path.
+func ListSessionSummaries(
+	ctx context.Context,
+	tx pgx.Tx,
+	filter SessionSummaryFilter,
+	limit int,
+	cursorStartedAt time.Time,
+	cursorID uuid.UUID,
+) ([]SessionListRow, error) {
+	if limit <= 0 {
+		limit = 25
+	}
+
+	clauses := []string{}
+	args := []any{}
+	idx := 1
+	addClause := func(cond string, vals ...any) {
+		clauses = append(clauses, cond)
+		args = append(args, vals...)
+		idx += len(vals)
+	}
+
+	if filter.UserID != nil {
+		addClause(fmt.Sprintf("s.user_id = $%d", idx), *filter.UserID)
+	}
+	if filter.Harness != nil {
+		addClause(fmt.Sprintf("s.harness = $%d", idx), *filter.Harness)
+	}
+	if filter.StartedAfter != nil {
+		addClause(fmt.Sprintf("s.started_at >= $%d", idx), *filter.StartedAfter)
+	}
+	if filter.StartedBefore != nil {
+		addClause(fmt.Sprintf("s.started_at < $%d", idx), *filter.StartedBefore)
+	}
+	if filter.MinScore != nil {
+		addClause(fmt.Sprintf("latest.composite_score >= $%d", idx), *filter.MinScore)
+	}
+	if filter.MaxScore != nil {
+		addClause(fmt.Sprintf("latest.composite_score <= $%d", idx), *filter.MaxScore)
+	}
+	if filter.HasOutcome != nil {
+		addClause(fmt.Sprintf(`EXISTS (
+			SELECT 1
+			  FROM outcomes o
+			 WHERE o.session_id = s.id
+			   AND o.outcome_type = $%d
+		)`, idx), *filter.HasOutcome)
+	}
+	if filter.Classification != nil {
+		addClause(fmt.Sprintf("s.classification = $%d", idx), *filter.Classification)
+	} else if filter.ExcludeDirty {
+		addClause(fmt.Sprintf("s.classification <> $%d", idx), ClassificationDirty)
+	}
+	if cursorID != uuid.Nil {
+		addClause(fmt.Sprintf("(s.started_at, s.id) < ($%d, $%d)", idx, idx+1), cursorStartedAt, cursorID)
+	}
+
+	where := ""
+	if len(clauses) > 0 {
+		where = "WHERE " + strings.Join(clauses, " AND ")
+	}
+	args = append(args, limit)
+
+	sql := sessionSummarySelectColumns + `
+	  FROM sessions s
+	  LEFT JOIN LATERAL (
+		SELECT id, session_id, tenant_id, scorer_version, composite_score,
+		       signals, rationale, contributor_weight, scored_at
+		  FROM session_scores ss
+		 WHERE ss.session_id = s.id
+		 ORDER BY ss.scored_at DESC, ss.id DESC
+		 LIMIT 1
+	  ) latest ON true
+	` + where + fmt.Sprintf(`
+	 ORDER BY s.started_at DESC, s.id DESC
+	 LIMIT $%d`, idx)
+
+	rows, err := tx.Query(ctx, sql, args...)
+	if err != nil {
+		return nil, fmt.Errorf("repo.sessions.list_summaries: %w", err)
+	}
+	defer rows.Close()
+	return scanSessionListRows(rows)
+}
+
 // MarkSessionArchived stamps archived_at = at on a session. Idempotent
 // once set: callers can issue this repeatedly without an error, but the
 // timestamp is only set the first time.
@@ -315,6 +424,18 @@ SELECT
   redacted_system, classification, ingested_at, archived_at
 `
 
+const sessionSummarySelectColumns = `
+SELECT
+  s.id, s.tenant_id, s.user_id, s.parent_session_id, s.harness, s.model,
+  s.effort, s.tools, s.repo_hash, s.git_branch, s.started_at, s.ended_at,
+  s.wall_time_ms, s.turn_count, s.total_tokens_in, s.total_tokens_out,
+  s.redacted_prompt, s.redacted_system, s.classification, s.ingested_at,
+  s.archived_at,
+  latest.id, latest.session_id, latest.tenant_id, latest.scorer_version,
+  latest.composite_score, latest.signals, latest.rationale,
+  latest.contributor_weight, latest.scored_at
+`
+
 // scanSessionTargets returns the slice of pointers that
 // sessionSelectAllColumns scans into, in field order.
 func scanSessionTargets(s *Session) []any {
@@ -339,6 +460,62 @@ func scanSessions(rows pgx.Rows) ([]Session, error) {
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("repo.sessions iter: %w", err)
+	}
+	return out, nil
+}
+
+func scanSessionListRows(rows pgx.Rows) ([]SessionListRow, error) {
+	var out []SessionListRow
+	for rows.Next() {
+		var row SessionListRow
+		var (
+			scoreID                *uuid.UUID
+			scoreSessionID         *uuid.UUID
+			scoreTenantID          *uuid.UUID
+			scoreScorerVersion     *string
+			scoreCompositeScore    *float64
+			scoreSignals           []byte
+			scoreRationale         *string
+			scoreContributorWeight *float64
+			scoreScoredAt          *time.Time
+		)
+		targets := scanSessionTargets(&row.Session)
+		targets = append(targets,
+			&scoreID,
+			&scoreSessionID,
+			&scoreTenantID,
+			&scoreScorerVersion,
+			&scoreCompositeScore,
+			&scoreSignals,
+			&scoreRationale,
+			&scoreContributorWeight,
+			&scoreScoredAt,
+		)
+		if err := rows.Scan(targets...); err != nil {
+			return nil, fmt.Errorf("repo.sessions list_summaries scan: %w", err)
+		}
+		if scoreID != nil {
+			if scoreSessionID == nil || scoreTenantID == nil ||
+				scoreScorerVersion == nil || scoreCompositeScore == nil ||
+				scoreContributorWeight == nil || scoreScoredAt == nil {
+				return nil, errors.New("repo.sessions list_summaries scan: partial latest score")
+			}
+			row.LatestScore = &Score{
+				ID:                *scoreID,
+				SessionID:         *scoreSessionID,
+				TenantID:          *scoreTenantID,
+				ScorerVersion:     *scoreScorerVersion,
+				CompositeScore:    *scoreCompositeScore,
+				Signals:           append([]byte(nil), scoreSignals...),
+				Rationale:         scoreRationale,
+				ContributorWeight: *scoreContributorWeight,
+				ScoredAt:          *scoreScoredAt,
+			}
+		}
+		out = append(out, row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("repo.sessions list_summaries iter: %w", err)
 	}
 	return out, nil
 }

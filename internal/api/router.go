@@ -106,6 +106,7 @@ func NewRouter(deps app.Deps) chi.Router {
 		)
 
 		authed.Get("/v1/dashboard/me", handler.DashboardMeHandler(deps))
+		authed.Get("/v1/sessions", handler.ListSessionsHandler(deps))
 
 		// GET /v1/dashboard/team (issue 039) — team-wide aggregates.
 		// The route-level admin gate runs after auth + tenant context

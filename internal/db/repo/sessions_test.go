@@ -294,6 +294,200 @@ func TestSessions_ListWithFilterAndCursor(t *testing.T) {
 	}
 }
 
+func TestSessions_ListSummariesFiltersLatestScoreOutcomeClassification(t *testing.T) {
+	tdb := dbtest.Setup(t, "../../../migrations")
+	defer tdb.Cleanup()
+	ctx := context.Background()
+	tenantID, userID := seedTenancy(ctx, t, tdb, "summary")
+	otherUserID := uuid.MustParse(tdb.SeedUser(ctx, t, "summary-other@example.com", "Other"))
+	tdb.SeedMembership(ctx, t, tenantID.String(), otherUserID.String(), repo.RoleMember)
+	base := time.Date(2026, 5, 22, 12, 0, 0, 0, time.UTC)
+
+	var keepID, staleScoreID, wrongOutcomeID, dirtyID, otherUserSessionID uuid.UUID
+	if err := db.WithTenant(ctx, tdb.AppPool, tenantID.String(), func(ctx context.Context, tx pgx.Tx) error {
+		insert := func(user uuid.UUID, harness, classification string, startedAt time.Time) (uuid.UUID, error) {
+			s := newSession(tenantID, user, harness, "m")
+			s.Classification = classification
+			s.StartedAt = startedAt
+			inserted, err := repo.InsertSession(ctx, tx, s)
+			if err != nil {
+				return uuid.Nil, err
+			}
+			return inserted.ID, nil
+		}
+
+		var err error
+		keepID, err = insert(userID, "codex", repo.ClassificationClean, base.Add(5*time.Minute))
+		if err != nil {
+			return err
+		}
+		staleScoreID, err = insert(userID, "codex", repo.ClassificationClean, base.Add(4*time.Minute))
+		if err != nil {
+			return err
+		}
+		wrongOutcomeID, err = insert(userID, "codex", repo.ClassificationClean, base.Add(3*time.Minute))
+		if err != nil {
+			return err
+		}
+		dirtyID, err = insert(userID, "codex", repo.ClassificationDirty, base.Add(2*time.Minute))
+		if err != nil {
+			return err
+		}
+		otherUserSessionID, err = insert(otherUserID, "codex", repo.ClassificationClean, base.Add(time.Minute))
+		if err != nil {
+			return err
+		}
+
+		for _, outcome := range []struct {
+			sessionID uuid.UUID
+			typ       string
+		}{
+			{keepID, repo.OutcomePRMerged},
+			{staleScoreID, repo.OutcomePRMerged},
+			{wrongOutcomeID, repo.OutcomeTestsFailed},
+			{dirtyID, repo.OutcomePRMerged},
+			{otherUserSessionID, repo.OutcomePRMerged},
+		} {
+			_, err := repo.InsertOutcome(ctx, tx, repo.Outcome{
+				SessionID:   outcome.sessionID,
+				TenantID:    tenantID,
+				OutcomeType: outcome.typ,
+			})
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("seed summaries: %v", err)
+	}
+
+	tdb.SeedScore(ctx, t, tenantID.String(), keepID.String(), "v1", 0.91, base.Add(time.Hour))
+	tdb.SeedScore(ctx, t, tenantID.String(), staleScoreID.String(), "old", 0.95, base.Add(time.Hour))
+	tdb.SeedScore(ctx, t, tenantID.String(), staleScoreID.String(), "latest", 0.20, base.Add(2*time.Hour))
+	tdb.SeedScore(ctx, t, tenantID.String(), wrongOutcomeID.String(), "v1", 0.99, base.Add(time.Hour))
+	tdb.SeedScore(ctx, t, tenantID.String(), dirtyID.String(), "v1", 0.99, base.Add(time.Hour))
+	tdb.SeedScore(ctx, t, tenantID.String(), otherUserSessionID.String(), "v1", 0.99, base.Add(time.Hour))
+
+	if err := db.WithTenant(ctx, tdb.AppPool, tenantID.String(), func(ctx context.Context, tx pgx.Tx) error {
+		minScore := 0.80
+		harness := "codex"
+		outcome := repo.OutcomePRMerged
+		classification := repo.ClassificationClean
+		startedAfter := base
+		startedBefore := base.Add(time.Hour)
+		rows, err := repo.ListSessionSummaries(ctx, tx, repo.SessionSummaryFilter{
+			UserID:         &userID,
+			Harness:        &harness,
+			StartedAfter:   &startedAfter,
+			StartedBefore:  &startedBefore,
+			MinScore:       &minScore,
+			HasOutcome:     &outcome,
+			Classification: &classification,
+		}, 10, time.Time{}, uuid.Nil)
+		if err != nil {
+			return err
+		}
+		if len(rows) != 1 || rows[0].Session.ID != keepID {
+			t.Fatalf("filtered summaries = %+v, want only %s", rows, keepID)
+		}
+		if rows[0].LatestScore == nil || rows[0].LatestScore.CompositeScore != 0.91 {
+			t.Fatalf("latest score mismatch: %+v", rows[0].LatestScore)
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("ListSessionSummaries filters: %v", err)
+	}
+
+	if err := db.WithTenant(ctx, tdb.AppPool, tenantID.String(), func(ctx context.Context, tx pgx.Tx) error {
+		rows, err := repo.ListSessionSummaries(ctx, tx, repo.SessionSummaryFilter{ExcludeDirty: true}, 20, time.Time{}, uuid.Nil)
+		if err != nil {
+			return err
+		}
+		for _, row := range rows {
+			if row.Session.ID == dirtyID {
+				t.Fatalf("ExcludeDirty returned dirty session %s", dirtyID)
+			}
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("ListSessionSummaries ExcludeDirty: %v", err)
+	}
+}
+
+func TestSessions_ListSummariesCursorStableAcrossInserts(t *testing.T) {
+	tdb := dbtest.Setup(t, "../../../migrations")
+	defer tdb.Cleanup()
+	ctx := context.Background()
+	tenantID, userID := seedTenancy(ctx, t, tdb, "summary-page")
+	base := time.Date(2026, 5, 22, 12, 0, 0, 0, time.UTC)
+
+	if err := db.WithTenant(ctx, tdb.AppPool, tenantID.String(), func(ctx context.Context, tx pgx.Tx) error {
+		for i := 0; i < 5; i++ {
+			s := newSession(tenantID, userID, "codex", "m")
+			s.StartedAt = base.Add(time.Duration(i) * time.Minute)
+			if _, err := repo.InsertSession(ctx, tx, s); err != nil {
+				return err
+			}
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("seed cursor summaries: %v", err)
+	}
+
+	var page1 []repo.SessionListRow
+	if err := db.WithTenant(ctx, tdb.AppPool, tenantID.String(), func(ctx context.Context, tx pgx.Tx) error {
+		rows, err := repo.ListSessionSummaries(ctx, tx, repo.SessionSummaryFilter{UserID: &userID}, 2, time.Time{}, uuid.Nil)
+		if err != nil {
+			return err
+		}
+		page1 = rows
+		return nil
+	}); err != nil {
+		t.Fatalf("ListSessionSummaries page1: %v", err)
+	}
+	if len(page1) != 2 {
+		t.Fatalf("page1 len = %d, want 2", len(page1))
+	}
+
+	var futureID uuid.UUID
+	if err := db.WithTenant(ctx, tdb.AppPool, tenantID.String(), func(ctx context.Context, tx pgx.Tx) error {
+		s := newSession(tenantID, userID, "codex", "m")
+		s.StartedAt = base.Add(24 * time.Hour)
+		inserted, err := repo.InsertSession(ctx, tx, s)
+		if err != nil {
+			return err
+		}
+		futureID = inserted.ID
+		return nil
+	}); err != nil {
+		t.Fatalf("insert future summary: %v", err)
+	}
+
+	last := page1[len(page1)-1].Session
+	if err := db.WithTenant(ctx, tdb.AppPool, tenantID.String(), func(ctx context.Context, tx pgx.Tx) error {
+		page2, err := repo.ListSessionSummaries(ctx, tx, repo.SessionSummaryFilter{UserID: &userID}, 3, last.StartedAt, last.ID)
+		if err != nil {
+			return err
+		}
+		seen := map[uuid.UUID]struct{}{}
+		for _, row := range page1 {
+			seen[row.Session.ID] = struct{}{}
+		}
+		for _, row := range page2 {
+			if row.Session.ID == futureID {
+				t.Fatalf("page2 included newly inserted future session")
+			}
+			if _, dup := seen[row.Session.ID]; dup {
+				t.Fatalf("page2 duplicated page1 session %s", row.Session.ID)
+			}
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("ListSessionSummaries page2: %v", err)
+	}
+}
+
 func TestSessions_MarkArchived(t *testing.T) {
 	tdb := dbtest.Setup(t, "../../../migrations")
 	defer tdb.Cleanup()
