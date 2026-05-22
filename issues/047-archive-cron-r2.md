@@ -1,7 +1,7 @@
 ---
 type: AFK
 depends-on:
-  - 018-repositories-suggestions-stacks-archive
+  - 053-repositories-suggestions-stacks-archive
 ---
 
 ## Parent PRD
@@ -129,7 +129,7 @@ Long-running goroutine in the Go binary (NOT Modal — Railway cron in-process i
 
 ## Blocked by
 
-- Blocked by `issues/018-repositories-suggestions-stacks-archive.md` — sessions + archive_pointers + audit_log repository functions; R2/S3 client abstraction
+- Blocked by `issues/053-repositories-suggestions-stacks-archive.md` — sessions + archive_pointers + audit_log repository functions; R2/S3 client abstraction
 
 ## User stories addressed
 

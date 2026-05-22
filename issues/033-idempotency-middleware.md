@@ -2,7 +2,7 @@
 type: AFK
 depends-on:
   - 029-middleware-scaffold
-  - 015-redis-client-streams-dlq
+  - 050-redis-client-streams-dlq
 ---
 
 ## Parent PRD

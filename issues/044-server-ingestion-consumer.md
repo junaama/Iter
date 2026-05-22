@@ -2,7 +2,7 @@
 type: AFK
 depends-on:
   - 043-websocket-gateway
-  - 016-repositories-tenancy-sessions
+  - 051-repositories-tenancy-sessions
 ---
 
 ## Parent PRD

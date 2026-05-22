@@ -2,7 +2,7 @@
 type: AFK
 depends-on:
   - 029-middleware-scaffold
-  - 020-llm-provider-abstraction
+  - 055-llm-provider-abstraction
 ---
 
 ## Parent PRD
@@ -49,7 +49,7 @@ Response shape (mirror `deploy.md`):
 ## Blocked by
 
 - Blocked by `issues/029-middleware-scaffold.md`
-- Blocked by Step 3 storage-layer baseline (`issues/done/020-llm-provider-abstraction.md`) — needs pgxpool, Redis client, LLM provider abstraction
+- Blocked by Step 3 storage-layer baseline (`issues/done/055-llm-provider-abstraction.md`) — needs pgxpool, Redis client, LLM provider abstraction
 
 ## User stories addressed
 

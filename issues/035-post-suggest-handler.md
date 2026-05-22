@@ -4,7 +4,7 @@ depends-on:
   - 032-rate-limit-middleware
   - 033-idempotency-middleware
   - 034-tenant-context-middleware
-  - 019-embedding-provider-abstraction
+  - 054-embedding-provider-abstraction
 ---
 
 ## Parent PRD

@@ -1,7 +1,7 @@
 ---
 type: AFK
 depends-on:
-  - 013-cmd-server-skeleton
+  - 048-cmd-server-skeleton
 ---
 
 ## Parent PRD
@@ -37,7 +37,7 @@ The minimal Go binary that boots an HTTP server and exits cleanly. No handlers y
 
 ## Blocked by
 
-- Blocked by `issues/013-cmd-server-skeleton.md` (needs the cmd/server + dep-injection shape settled)
+- Blocked by `issues/048-cmd-server-skeleton.md` (needs the cmd/server + dep-injection shape settled)
 
 ## User stories addressed
 

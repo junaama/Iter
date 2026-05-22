@@ -2,7 +2,7 @@
 type: AFK
 depends-on:
   - 029-middleware-scaffold
-  - 021-workos-auth-jwt-verifier
+  - 056-workos-auth-jwt-verifier
 ---
 
 ## Parent PRD

@@ -3,7 +3,7 @@ type: AFK
 depends-on:
   - 034-tenant-context-middleware
   - 033-idempotency-middleware
-  - 014-postgres-connection-layer
+  - 049-postgres-connection-layer
 ---
 
 ## Parent PRD

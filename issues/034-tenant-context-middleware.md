@@ -2,7 +2,7 @@
 type: AFK
 depends-on:
   - 031-auth-middleware-workos-jwt
-  - 014-postgres-connection-layer
+  - 049-postgres-connection-layer
 ---
 
 ## Parent PRD

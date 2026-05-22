@@ -2,7 +2,7 @@
 type: AFK
 depends-on:
   - 029-middleware-scaffold
-  - 017-repositories-scoring-outcomes
+  - 052-repositories-scoring-outcomes
 ---
 
 ## Parent PRD

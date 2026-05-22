@@ -2,7 +2,7 @@
 type: AFK
 depends-on:
   - 031-auth-middleware-workos-jwt
-  - 016-repositories-tenancy-sessions
+  - 051-repositories-tenancy-sessions
 ---
 
 ## Parent PRD

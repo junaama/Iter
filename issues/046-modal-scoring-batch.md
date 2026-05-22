@@ -1,7 +1,7 @@
 ---
 type: AFK
 depends-on:
-  - 022-modal-scoring-stub
+  - 057-modal-scoring-stub
 ---
 
 ## Parent PRD
