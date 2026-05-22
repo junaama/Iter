@@ -5,8 +5,8 @@
 //
 //	request_id → logger → recover → auth → tenant_context → rate_limit → idempotency
 //
-// Issue 029 ships the first three. Auth (031), tenant_context (032),
-// rate_limit (033), and idempotency (034) slot in afterward.
+// Issue 029 ships the first three. Auth (031), idempotency (033),
+// rate_limit (032), and tenant_context (034) slot in afterward.
 //
 // DECISIONS.md "HTTP router (issue 028)" forbids importing
 // github.com/go-chi/chi/v5/middleware — every middleware concern lives

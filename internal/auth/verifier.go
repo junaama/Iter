@@ -304,11 +304,24 @@ func extractPrincipal(tok jwt.Token) (contracts.Principal, error) {
 		}
 	}
 
+	// token_type is optional. Per the issue 032 contract, "cli" and
+	// "daemon" are the canonical values; any other string is preserved
+	// verbatim so future tiers (e.g. "ci") don't need a verifier change.
+	// Non-string claim values are dropped silently — the rate-limit
+	// middleware treats absence as the conservative default (100/min).
+	var tokenType string
+	if ttRaw, ok := tok.Get("token_type"); ok {
+		if s, ok := ttRaw.(string); ok {
+			tokenType = s
+		}
+	}
+
 	return contracts.Principal{
-		UserID:   userID,
-		TenantID: tenantID,
-		Roles:    roles,
-		TokenID:  tok.JwtID(),
+		UserID:    userID,
+		TenantID:  tenantID,
+		Roles:     roles,
+		TokenID:   tok.JwtID(),
+		TokenType: tokenType,
 	}, nil
 }
 

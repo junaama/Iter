@@ -18,14 +18,19 @@ import (
 //     SET LOCAL app.current_tenant for RLS.
 //   - Roles:   optional WorkOS roles claim (`roles`) — empty slice if absent.
 //   - TokenID: the JWT `jti` claim — used for revocation and audit logging.
+//   - TokenType: optional WorkOS `token_type` claim — one of "cli" or "daemon"
+//     for v1. Empty string when absent. Consumed by the rate-limit middleware
+//     (issue 032) to pick the per-token sliding-window bucket size
+//     (100/min CLI, 600/min daemon per ARCHITECTURE.md §5).
 //
 // Principal is immutable. Callers that need to derive a modified copy should
 // construct a new value rather than mutating fields.
 type Principal struct {
-	UserID   uuid.UUID
-	TenantID uuid.UUID
-	Roles    []string
-	TokenID  string
+	UserID    uuid.UUID
+	TenantID  uuid.UUID
+	Roles     []string
+	TokenID   string
+	TokenType string
 }
 
 // principalCtxKey is unexported so external packages cannot collide with
