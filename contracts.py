@@ -137,13 +137,18 @@ class NoSuggestionReason(str, Enum):
     NO_EVIDENCE = "no_evidence"          # no nearby past sessions to learn from
     LOW_CONFIDENCE = "low_confidence"    # candidates exist but all score < 0.50
     LLM_UNAVAILABLE = "llm_unavailable"  # upstream LLM provider down
+    LLM_UNPARSEABLE = "llm_unparseable"  # provider returned non-contract JSON
     LATENCY_BUDGET_EXCEEDED = "latency_budget_exceeded"
     USER_OPTED_OUT = "user_opted_out"
+
+
+SuggestionAction = Literal["suppress", "advisory", "replace"]
 
 
 class SuggestResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    action: SuggestionAction
     suggestion_id: Optional[UUID]
     refined_prompt: Optional[str]
     rationale: Optional[str]
@@ -162,14 +167,14 @@ class SuggestResponse(BaseModel):
         return v
 
 
-def suggestion_action(confidence: float, refined_prompt: Optional[str]) -> Literal["suppress", "advise", "replace"]:
+def suggestion_action(confidence: float, refined_prompt: Optional[str]) -> SuggestionAction:
     """Pure decision function. Reflects locked thresholds.
     Clients (skill.md handler, post-prompt monitor) call this to decide UI behavior."""
     if refined_prompt is None or confidence < CONFIDENCE_SUPPRESS_BELOW:
         return "suppress"
     if confidence >= CONFIDENCE_REPLACE_AT:
         return "replace"
-    return "advise"
+    return "advisory"
 
 
 # ============================================================================

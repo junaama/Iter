@@ -1,6 +1,9 @@
 package api_test
 
 import (
+	"context"
+	"crypto/rand"
+	"crypto/rsa"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -8,11 +11,19 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/alicebob/miniredis/v2"
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
+	"github.com/lestrrat-go/jwx/v2/jwa"
+	"github.com/lestrrat-go/jwx/v2/jwk"
+	"github.com/lestrrat-go/jwx/v2/jwt"
+	goredis "github.com/redis/go-redis/v9"
 
 	"github.com/iter-dev/iter/internal/api"
 	"github.com/iter-dev/iter/internal/app"
+	"github.com/iter-dev/iter/internal/auth"
 )
 
 func TestRouter_UnregisteredRouteReturns503(t *testing.T) {
@@ -128,9 +139,122 @@ func TestRouter_DashboardTeamRegistered(t *testing.T) {
 	}
 }
 
+func TestRouter_SuggestRegisteredBehindIdempotency(t *testing.T) {
+	tenantID := uuid.New()
+	userID := uuid.New()
+	verifier, token := testVerifierAndToken(t, tenantID, userID)
+	mr := miniredis.RunT(t)
+	rdb := goredis.NewClient(&goredis.Options{Addr: mr.Addr()})
+	defer func() { _ = rdb.Close() }()
+
+	deps := app.Deps{
+		Logger:       slog.New(slog.NewTextHandler(io.Discard, nil)),
+		BuildVersion: "test",
+		Auth:         verifier,
+		Redis:        rdb,
+	}
+
+	r := api.NewRouter(deps)
+	srv := httptest.NewServer(r)
+	defer srv.Close()
+
+	req, err := http.NewRequest(http.MethodPost, srv.URL+"/v1/suggest", strings.NewReader(`{}`))
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("POST /v1/suggest: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusBadRequest {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("want 400 from idempotency middleware, got %d body=%q", resp.StatusCode, string(body))
+	}
+	body, _ := io.ReadAll(resp.Body)
+	if !strings.Contains(string(body), "missing_idempotency_key") {
+		t.Fatalf("body missing idempotency marker: %q", string(body))
+	}
+}
+
 func TestServer_TimeoutsAndAddr(t *testing.T) {
 	srv := api.NewServer(":0", http.NewServeMux())
 	if srv.Addr() != ":0" {
 		t.Fatalf("Addr round-trip: got %q want :0", srv.Addr())
 	}
+}
+
+func testVerifierAndToken(t *testing.T, tenantID, userID uuid.UUID) (*auth.Verifier, string) {
+	t.Helper()
+	const (
+		issuer   = "https://issuer.example.test"
+		audience = "iter-test"
+		kid      = "router-test-key"
+	)
+	now := time.Date(2026, 5, 22, 12, 0, 0, 0, time.UTC)
+
+	priv, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("rsa.GenerateKey: %v", err)
+	}
+	pub, err := jwk.FromRaw(priv.Public())
+	if err != nil {
+		t.Fatalf("public jwk: %v", err)
+	}
+	if err := pub.Set(jwk.KeyIDKey, kid); err != nil {
+		t.Fatalf("set public kid: %v", err)
+	}
+	if err := pub.Set(jwk.AlgorithmKey, jwa.RS256); err != nil {
+		t.Fatalf("set public alg: %v", err)
+	}
+	set := jwk.NewSet()
+	if err := set.AddKey(pub); err != nil {
+		t.Fatalf("add public key: %v", err)
+	}
+
+	verifier, err := auth.NewVerifier(auth.VerifierConfig{
+		JWKSURL:  "https://issuer.example.test/jwks.json",
+		Issuer:   issuer,
+		Audience: audience,
+		Now:      func() time.Time { return now },
+		Fetch: func(context.Context, string) (jwk.Set, error) {
+			return set, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewVerifier: %v", err)
+	}
+
+	tok, err := jwt.NewBuilder().
+		Issuer(issuer).
+		Audience([]string{audience}).
+		Subject(userID.String()).
+		Claim("tenant_id", tenantID.String()).
+		Claim("token_type", "cli").
+		IssuedAt(now.Add(-time.Minute)).
+		NotBefore(now.Add(-time.Minute)).
+		Expiration(now.Add(time.Hour)).
+		JwtID("jti-" + uuid.NewString()).
+		Build()
+	if err != nil {
+		t.Fatalf("token build: %v", err)
+	}
+	signKey, err := jwk.FromRaw(priv)
+	if err != nil {
+		t.Fatalf("private jwk: %v", err)
+	}
+	if err := signKey.Set(jwk.KeyIDKey, kid); err != nil {
+		t.Fatalf("set private kid: %v", err)
+	}
+	if err := signKey.Set(jwk.AlgorithmKey, jwa.RS256); err != nil {
+		t.Fatalf("set private alg: %v", err)
+	}
+	raw, err := jwt.Sign(tok, jwt.WithKey(jwa.RS256, signKey))
+	if err != nil {
+		t.Fatalf("jwt.Sign: %v", err)
+	}
+	return verifier, string(raw)
 }

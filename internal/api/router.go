@@ -114,6 +114,11 @@ func NewRouter(deps app.Deps) chi.Router {
 		// same RLS-scoped request transaction.
 		authed.With(requireAdmin(deps.Logger)).Get("/v1/dashboard/team", handler.DashboardTeamHandler(deps))
 
+		// POST /v1/suggest (issue 035) is the flagship latency-critical
+		// path and intentionally sits inside the full authenticated stack:
+		// auth -> tenant tx -> rate limit -> idempotency -> handler.
+		authed.Post("/v1/suggest", handler.SuggestHandler(deps))
+
 		// Placeholder for any unrouted request until handlers land
 		// in 029+. 503 (not 404) so misconfigured callers reaching
 		// this binary today can distinguish "wrong URL" from
