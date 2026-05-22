@@ -7,6 +7,7 @@
 //   - issue 049 adds *pgxpool.Pool (DB) and BatchDB *pgxpool.Pool.
 //   - issue 050 added a *redis.Client (Redis Streams + cache).
 //   - issue 055 added an *llm.Router (multi-provider LLM).
+//   - issue 054 added an *embed.Router (multi-provider embeddings).
 //   - issue 056 adds an *auth.Verifier (WorkOS JWT verifier).
 //   - issue 057 adds a *modal.Client (scoring stub).
 //
@@ -19,6 +20,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/iter-dev/iter/internal/embed"
 	"github.com/iter-dev/iter/internal/llm"
 
 	goredis "github.com/redis/go-redis/v9"
@@ -62,6 +64,14 @@ type Deps struct {
 	// must nil-check and return 503 (mapped to `no_suggestion_reason:
 	// llm_unavailable` by the suggest handler, ARCHITECTURE.md §7).
 	LLM *llm.Router
+
+	// Embed is the multi-provider embedding router (issue 054). May be
+	// nil in tests; the embedding worker and suggest-path cache miss
+	// nil-check at use site. When unavailable the embedding worker
+	// requeues with backoff and the session is viewable but not
+	// searchable until embedding lands (ARCHITECTURE.md §7 "Embedding
+	// provider unavailable").
+	Embed *embed.Router
 
 	// Redis is the cache + Redis Streams client (issue 050). Optional:
 	// some workloads (e.g. a pure migration runner sub-command or a
