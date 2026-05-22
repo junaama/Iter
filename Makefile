@@ -22,6 +22,7 @@ PG_CONTAINER := iter-pg-dev
 .PHONY: help
 help:
 	@echo "Go targets:"
+	@echo "  make run           Run cmd/server locally (PORT defaults to 8080)"
 	@echo "  make test          Run go test ./..."
 	@echo "  make lint          Run golangci-lint run"
 	@echo "  make bench         Run go test -run=^$$ -bench=. -benchmem ./..."
@@ -40,6 +41,10 @@ help:
 	@echo "  make bench-hnsw    HNSW 10K-vector baseline (writes benchmarks/hnsw-10k-baseline.md)"
 	@echo ""
 	@echo "DATABASE_URL=$(DATABASE_URL)"
+
+.PHONY: run
+run:
+	go run -ldflags "-X main.version=$$(git describe --tags --dirty --always 2>/dev/null || echo dev)" ./cmd/server
 
 .PHONY: test
 test:
