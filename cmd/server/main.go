@@ -21,6 +21,7 @@ import (
 
 	"github.com/iter-dev/iter/internal/api"
 	"github.com/iter-dev/iter/internal/app"
+	"github.com/iter-dev/iter/internal/auth"
 	"github.com/iter-dev/iter/internal/db"
 	"github.com/iter-dev/iter/internal/embed"
 	"github.com/iter-dev/iter/internal/llm"
@@ -101,6 +102,16 @@ func main() {
 	// shared client for the SHA256 cache. A nil Redis is acceptable —
 	// NewCache returns a nil *Cache and the router runs cache-disabled.
 	deps.Embed = buildEmbedRouter(logger, deps.Redis)
+
+	// Wire the WorkOS JWT verifier (issue 056). If any of the three
+	// required env vars are unset, log a warning and leave deps.Auth
+	// nil — the auth middleware (031) nil-checks and returns 503
+	// auth_unavailable on every non-whitelisted request so an
+	// under-configured deploy is visibly broken instead of silently
+	// accepting unauthenticated traffic. Building the verifier does
+	// NOT fetch the JWKS (NewVerifier is lazy); the first authenticated
+	// request triggers the initial fetch.
+	deps.Auth = buildAuthVerifier(logger)
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -205,6 +216,47 @@ func buildEmbedRouter(logger *slog.Logger, rdb embed.RedisLike) *embed.Router {
 		Priority:  []string{"voyage", "openai", "google"},
 		Cache:     cache,
 	})
+}
+
+// buildAuthVerifier constructs the WorkOS JWT verifier from environment
+// variables. Returns nil (with a Warn log) when any of WORKOS_JWKS_URL,
+// WORKOS_ISSUER, or WORKOS_AUDIENCE are unset, so early-bring-up boots
+// before WorkOS is provisioned still come up — the auth middleware
+// (issue 031) nil-checks and returns 503 auth_unavailable on every
+// non-whitelisted request in that state, which is the intended visible-
+// broken posture for an under-configured deploy.
+//
+// NewVerifier does NOT fetch the JWKS; the first authenticated request
+// triggers the initial fetch with a synchronous round-trip that the
+// verifier's stale-while-revalidate cache amortizes for subsequent
+// requests (1h fresh TTL + 10m stale window).
+func buildAuthVerifier(logger *slog.Logger) *auth.Verifier {
+	jwksURL := os.Getenv("WORKOS_JWKS_URL")
+	issuer := os.Getenv("WORKOS_ISSUER")
+	audience := os.Getenv("WORKOS_AUDIENCE")
+	if jwksURL == "" || issuer == "" || audience == "" {
+		logger.Warn(
+			"WORKOS_* env vars incomplete; auth middleware will return 503 auth_unavailable on every authenticated request",
+			"have_jwks_url", jwksURL != "",
+			"have_issuer", issuer != "",
+			"have_audience", audience != "",
+		)
+		return nil
+	}
+	v, err := auth.NewVerifier(auth.VerifierConfig{
+		JWKSURL:  jwksURL,
+		Issuer:   issuer,
+		Audience: audience,
+	})
+	if err != nil {
+		// NewVerifier only errors on missing required fields, which
+		// we already checked above; any error here is a programming
+		// bug rather than a config issue, but we still soft-fail so
+		// the server boots and the middleware returns 503.
+		logger.Error("failed to construct auth verifier; continuing with deps.Auth=nil", "err", err)
+		return nil
+	}
+	return v
 }
 
 // run is split out so it can be unit-tested without exiting the process.

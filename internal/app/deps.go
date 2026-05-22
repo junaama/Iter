@@ -20,6 +20,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/iter-dev/iter/internal/auth"
 	"github.com/iter-dev/iter/internal/embed"
 	"github.com/iter-dev/iter/internal/llm"
 
@@ -80,6 +81,12 @@ type Deps struct {
 	// site and return a clear error rather than panicking; cmd/server
 	// logs a warning at boot when REDIS_URL is unset.
 	Redis *goredis.Client
-	//   Auth   *auth.Verifier    // issue 056
+
+	// Auth is the WorkOS JWT verifier (issue 056) consumed by the auth
+	// middleware (issue 031). May be nil in non-prod boots when the
+	// WORKOS_* env vars are unset; the middleware nil-checks and
+	// returns 503 auth_unavailable on every non-whitelisted request so
+	// early-bring-up is loud rather than silently-unauthenticated.
+	Auth *auth.Verifier
 	//   Modal  *modal.Client     // issue 057
 }
