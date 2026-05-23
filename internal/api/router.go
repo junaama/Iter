@@ -141,6 +141,17 @@ func NewRouter(deps app.Deps) chi.Router {
 		})
 	})
 
+	// POST /v1/auth/session — WorkOS access token → Iter session JWT
+	// exchange. Lives on the root router OUTSIDE the authed Group:
+	// callers do not yet hold an Iter JWT (this is the endpoint that
+	// mints one), so requiring auth here would be circular. Tenant
+	// context and idempotency are likewise skipped because both
+	// require a Principal which the caller cannot yet present.
+	// The handler does its own input validation and rate-shaping
+	// via a body-size cap; brute-force protection at the network
+	// edge is delegated to the deploy (Railway / Cloudflare WAF).
+	r.Post("/v1/auth/session", handler.AuthSessionHandler(deps))
+
 	// /health lives on the root router with no middleware applied.
 	// Registered AFTER the Group so it's clear visually that it sits
 	// outside the chain; chi.Get on the root mux is order-independent

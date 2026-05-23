@@ -11,6 +11,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -122,15 +123,24 @@ func main() {
 	// NewCache returns a nil *Cache and the router runs cache-disabled.
 	deps.Embed = buildEmbedRouter(logger, deps.Redis)
 
-	// Wire the WorkOS JWT verifier (issue 056). If any of the three
-	// required env vars are unset, log a warning and leave deps.Auth
-	// nil — the auth middleware (031) nil-checks and returns 503
-	// auth_unavailable on every non-whitelisted request so an
-	// under-configured deploy is visibly broken instead of silently
-	// accepting unauthenticated traffic. Building the verifier does
-	// NOT fetch the JWKS (NewVerifier is lazy); the first authenticated
-	// request triggers the initial fetch.
-	deps.Auth = buildAuthVerifier(logger)
+	// Wire the WorkOS JWT verifier — used SOLELY by the token-exchange
+	// handler POST /v1/auth/session (it validates WorkOS access tokens
+	// before minting Iter-issued session JWTs). If any of WORKOS_JWKS_URL
+	// or WORKOS_ISSUER is unset, log a warning and leave WorkOSVerifier
+	// nil — the exchange endpoint returns 503 until the env is fixed.
+	deps.WorkOSVerifier = buildAuthVerifier(logger)
+
+	// Wire the Iter-issued JWT signer + verifier. ITER_JWT_SECRET is
+	// REQUIRED — boot fails loudly when unset, matching the DATABASE_URL
+	// posture, because the auth middleware has no way to validate the
+	// Iter session tokens the Mac app and CLI present otherwise.
+	signer, verifier, err := buildIterTokenAuth(logger)
+	if err != nil {
+		logger.Error("startup failed: ITER_JWT_SECRET", "err", err)
+		os.Exit(1)
+	}
+	deps.IterSigner = signer
+	deps.Auth = verifier
 
 	// Wire the WebSocket gateway (issue 043). The gateway authenticates
 	// inside ServeHTTP using deps.Auth, so it must be constructed AFTER
@@ -491,6 +501,28 @@ func buildAuthVerifier(logger *slog.Logger) *auth.Verifier {
 		return nil
 	}
 	return v
+}
+
+// buildIterTokenAuth constructs the Iter-issued session JWT signer +
+// verifier from $ITER_JWT_SECRET. Both share the same secret (HS256 is
+// symmetric); v1 keeps signing and verifying in one process. Boot must
+// fail loudly when the secret is missing — matching the DATABASE_URL
+// posture — because the request path has no fallback verifier.
+func buildIterTokenAuth(logger *slog.Logger) (*auth.IterSigner, *auth.IterVerifier, error) {
+	secret := os.Getenv("ITER_JWT_SECRET")
+	if secret == "" {
+		return nil, nil, errors.New("ITER_JWT_SECRET is required")
+	}
+	signer, err := auth.NewIterSigner(secret)
+	if err != nil {
+		return nil, nil, fmt.Errorf("build IterSigner: %w", err)
+	}
+	verifier, err := auth.NewIterVerifier(secret)
+	if err != nil {
+		return nil, nil, fmt.Errorf("build IterVerifier: %w", err)
+	}
+	logger.Info("iter session JWT auth enabled (HS256)")
+	return signer, verifier, nil
 }
 
 // buildAuthKit constructs the WorkOS AuthKit handler from environment

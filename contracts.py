@@ -105,6 +105,37 @@ class SessionContext(BaseModel):
 
 
 # ============================================================================
+# WorkOS → Iter session-token exchange: POST /v1/auth/session
+# ============================================================================
+#
+# The Mac app (and CLI, in a follow-up slice) signs in via WorkOS
+# device-code, then POSTs the WorkOS access token here to receive a
+# freshly minted Iter-issued HS256 JWT carrying the Iter user/tenant
+# UUIDs the rest of the API expects. WorkOS access tokens carry
+# `sub = "user_01KS..."` (a prefixed WorkOS id) with no `tenant_id`
+# claim and cannot be presented to /v1/* directly — that's the gap
+# this endpoint closes.
+#
+# This endpoint is OUTSIDE the authed middleware group (no Bearer
+# required) — by definition the caller doesn't yet hold an Iter JWT.
+# Mirrored in pkg/contracts/auth_session.go.
+
+
+class AuthSessionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    workos_access_token: str = Field(min_length=20)
+
+
+class AuthSessionResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    access_token: str = Field(min_length=20)
+    expires_in: int = Field(ge=1)  # seconds; OAuth2 convention
+    token_type: Literal["Bearer"] = "Bearer"
+
+
+# ============================================================================
 # Local daemon IPC
 # ============================================================================
 
