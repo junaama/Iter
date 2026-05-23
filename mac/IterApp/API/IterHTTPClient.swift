@@ -176,8 +176,17 @@ final class IterHTTPClient {
     }
 
     private static func defaultBearerToken() -> String? {
-        ProcessInfo.processInfo.environment["ITER_API_TOKEN"]
-            ?? UserDefaults.standard.string(forKey: "iter.api.token")
+        if let env = ProcessInfo.processInfo.environment["ITER_API_TOKEN"], !env.isEmpty {
+            return env
+        }
+        if let stored = UserDefaults.standard.string(forKey: "iter.api.token"), !stored.isEmpty {
+            return stored
+        }
+        // Fall back to the Iter session JWT in the Keychain. SessionStore
+        // persists it there after the WorkOS → Iter exchange completes,
+        // so a client constructed without an explicit sessionStore still
+        // authenticates the signed-in user.
+        return try? TokenKeychainStore().load()?.accessToken
     }
 }
 
