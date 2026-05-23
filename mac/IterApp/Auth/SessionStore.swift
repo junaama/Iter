@@ -151,7 +151,7 @@ final class SessionStore {
         userId = accessClaims.subject
         role = accessClaims.roles.first
         expiresAt = accessClaims.expiresAt
-        displayName = accessClaims.displayName ?? idClaims?.displayName ?? accessClaims.subject
+        displayName = accessClaims.displayName ?? idClaims?.displayName ?? Self.emailLikeSubject(accessClaims.subject)
         status = .signedIn
         lastError = nil
         scheduleRefresh()
@@ -178,6 +178,10 @@ final class SessionStore {
         displayName = nil
         deviceAuthorization = nil
         self.status = status
+    }
+
+    private static func emailLikeSubject(_ subject: String) -> String? {
+        subject.contains("@") ? subject : nil
     }
 }
 

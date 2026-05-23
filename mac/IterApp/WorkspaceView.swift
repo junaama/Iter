@@ -192,6 +192,7 @@ struct WorkspaceView: View {
                                     route: router.route,
                                     dashboard: dashboardMeStore.dashboard,
                                     teamDashboard: dashboardTeamStore.dashboard,
+                                    teamSessions: dashboardTeamStore.recentSessions,
                                     stackStore: stackStore
                                 ) { route in
                                     router.route = route
@@ -264,7 +265,9 @@ private struct TitlebarView: View {
     var body: some View {
         ZStack {
             HStack {
-                TrafficLightsView()
+                Color.clear
+                    .frame(width: 54, height: 12)
+                    .accessibilityHidden(true)
                 Spacer()
                 TitlebarActionsView(
                     searchText: $searchText,
@@ -284,21 +287,6 @@ private struct TitlebarView: View {
         .overlay(alignment: .bottom) {
             DividerLine()
         }
-    }
-}
-
-private struct TrafficLightsView: View {
-    var body: some View {
-        HStack(spacing: 7) {
-            Circle()
-                .fill(Color.hex(0xFF5F57))
-            Circle()
-                .fill(Color.hex(0xFEBC2E))
-            Circle()
-                .fill(Color.hex(0x28C840))
-        }
-        .frame(width: 54, height: 12)
-        .accessibilityHidden(true)
     }
 }
 
@@ -495,42 +483,68 @@ private struct SidebarView: View {
 private struct WorkspaceSwitcherView: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(SessionStore.self) private var sessionStore
+    @Environment(WorkspaceRouter.self) private var router
 
     var body: some View {
-        HStack(spacing: IterSpacing.gapSmall) {
-            Text(verbatim: "i")
-                .font(IterFont.monoAvatar)
-                .foregroundStyle(Color.white)
-                .frame(width: 22, height: 22)
-                .background(Color.iterAccent(for: colorScheme))
-                .clipShape(.rect(cornerRadius: IterRadius.avatar))
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(verbatim: "iter · core")
-                    .font(IterFont.sansCardTitle)
-                    .foregroundStyle(Color.iterTextPrimary(for: colorScheme))
-
-                Text(verbatim: sessionStore.displayName ?? sessionStore.userId ?? "signed in")
-                    .font(IterFont.monoSmall)
-                    .foregroundStyle(Color.iterTextTertiary(for: colorScheme))
-                    .lineLimit(1)
+        Menu {
+            Section {
+                Text(identityLabel)
             }
 
-            Spacer()
+            Button {
+                router.route = .settings
+            } label: {
+                Label("Settings", systemImage: "gearshape")
+            }
+
+            Divider()
 
             Button {
                 sessionStore.signOut()
             } label: {
-                Image(systemName: "rectangle.portrait.and.arrow.right")
-                    .font(.system(size: 11, weight: .semibold))
-                    .frame(width: 22, height: 22)
-                    .contentShape(.rect)
+                Label("Sign out", systemImage: "rectangle.portrait.and.arrow.right")
             }
-            .buttonStyle(.plain)
-            .foregroundStyle(Color.iterTextTertiary(for: colorScheme))
-            .accessibilityLabel("Sign out")
+        } label: {
+            HStack(spacing: IterSpacing.gapSmall) {
+                Text(verbatim: "i")
+                    .font(IterFont.monoAvatar)
+                    .foregroundStyle(Color.white)
+                    .frame(width: 22, height: 22)
+                    .background(Color.iterAccent(for: colorScheme))
+                    .clipShape(.rect(cornerRadius: IterRadius.avatar))
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(verbatim: "iter · core")
+                        .font(IterFont.sansCardTitle)
+                        .foregroundStyle(Color.iterTextPrimary(for: colorScheme))
+
+                    Text(verbatim: identityLabel)
+                        .font(IterFont.monoSmall)
+                        .foregroundStyle(Color.iterTextTertiary(for: colorScheme))
+                        .lineLimit(1)
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(Color.iterTextTertiary(for: colorScheme))
+                    .accessibilityHidden(true)
+            }
+            .frame(height: 36)
+            .contentShape(.rect)
         }
-        .frame(height: 36)
+        .menuStyle(.borderlessButton)
+        .buttonStyle(.plain)
+        .accessibilityLabel("Profile menu")
+    }
+
+    private var identityLabel: String {
+        guard let displayName = sessionStore.displayName?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !displayName.isEmpty else {
+            return "signed in"
+        }
+        return displayName
     }
 }
 
@@ -765,14 +779,20 @@ private struct SubbarView: View {
                     .lineLimit(1)
 
                 HStack(spacing: 2) {
-                    TabButton(title: "Me", isActive: route.matchesTopLevel(.me))
-                    TabButton(title: "Team", isActive: route.matchesTopLevel(.team))
-                    TabButton(title: "Sessions", isActive: route.matchesTopLevel(.sessions))
+                    TabButton(title: "Me", isActive: route.matchesTopLevel(.me)) {
+                        route = .me
+                    }
+                    TabButton(title: "Team", isActive: route.matchesTopLevel(.team)) {
+                        route = .team
+                    }
+                    TabButton(title: "Sessions", isActive: route.matchesTopLevel(.sessions)) {
+                        route = .sessions
+                    }
                 }
 
                 Spacer()
 
-                if route.matchesTopLevel(.me) {
+                if route.matchesTopLevel(.me) || route.matchesTopLevel(.team) || route.matchesTopLevel(.sessions) {
                     DashboardRefreshButton(isRefreshing: isDashboardRefreshing, action: onRefreshDashboard)
                 }
 
@@ -828,17 +848,23 @@ private struct TabButton: View {
 
     let title: String
     let isActive: Bool
+    let action: () -> Void
 
     var body: some View {
-        Text(verbatim: title)
-            .font(IterFont.sans(size: 12, weight: isActive ? .medium : .regular))
-            .foregroundStyle(
-                isActive ? Color.iterTextPrimary(for: colorScheme) : Color.iterTextTertiary(for: colorScheme)
-            )
-            .padding(.horizontal, 8)
-            .frame(height: 24)
-            .background(isActive ? Color.iterSelected(for: colorScheme) : Color.clear)
-            .clipShape(.rect(cornerRadius: IterRadius.segment))
+        Button(action: action) {
+            Text(verbatim: title)
+                .font(IterFont.sans(size: 12, weight: isActive ? .medium : .regular))
+                .foregroundStyle(
+                    isActive ? Color.iterTextPrimary(for: colorScheme) : Color.iterTextTertiary(for: colorScheme)
+                )
+                .padding(.horizontal, 8)
+                .frame(height: 24)
+                .background(isActive ? Color.iterSelected(for: colorScheme) : Color.clear)
+                .clipShape(.rect(cornerRadius: IterRadius.segment))
+                .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(isActive ? .isSelected : [])
     }
 }
 
@@ -908,6 +934,12 @@ private struct MainPaneView: View {
                 onSelectSession: { id in onNavigate(.sessionDetail(id: id)) },
                 onViewAll: { onNavigate(.sessions) }
             )
+        } else if route.matchesTopLevel(.sessions) {
+            DashboardSessionsView(
+                store: dashboardTeamStore,
+                layoutVariant: layoutVariant,
+                onSelectSession: { id in onNavigate(.sessionDetail(id: id)) }
+            )
         } else if route.matchesTopLevel(.stack) {
             StackMeView(store: stackStore)
         } else if route.matchesTopLevel(.settings) {
@@ -923,7 +955,7 @@ private struct MainPaneView: View {
                 .font(IterFont.sansKPIValue)
                 .foregroundStyle(Color.iterTextPrimary(for: colorScheme))
 
-            Text(verbatim: "Not implemented yet.")
+            Text(verbatim: "This workspace view is unavailable.")
                 .font(IterFont.sansBody)
                 .foregroundStyle(Color.iterTextSecondary(for: colorScheme))
 
@@ -932,6 +964,205 @@ private struct MainPaneView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .padding(IterSpacing.mainPanePadding)
         .background(Color.iterPanel(for: colorScheme))
+    }
+}
+
+private struct DashboardSessionsView: View {
+    @Environment(\.colorScheme) private var colorScheme
+    @Bindable var store: DashboardTeamStore
+
+    let layoutVariant: LayoutVariant
+    let onSelectSession: (String) -> Void
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: IterSpacing.gapLarge) {
+                KPIRow(tiles: kpiTiles)
+
+                if let errorMessage = store.errorMessage {
+                    SessionsInlineRetryBanner(message: errorMessage) {
+                        Task { await store.load(forceRefresh: true) }
+                    }
+                }
+
+                SessionsSection(
+                    count: store.sessionCountLabel,
+                    sessions: sessionItems,
+                    layoutVariant: layoutVariant,
+                    isLoading: store.recentSessions.isEmpty && store.isLoading,
+                    onSelectSession: onSelectSession
+                )
+            }
+            .padding(IterSpacing.mainPanePadding)
+        }
+        .background(Color.iterPanel(for: colorScheme))
+        .task {
+            await store.load()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            Task { await store.load() }
+        }
+    }
+
+    private var sessionItems: [SessionListItem] {
+        DashboardTeamDisplay.sessionItems(
+            from: store.recentSessions,
+            members: store.dashboard?.members ?? []
+        )
+    }
+
+    private var kpiTiles: [KPITileData] {
+        let sessions = store.recentSessions
+        let scored = sessions.compactMap { $0.latestScore?.compositeScore }
+        let averageScore = scored.isEmpty
+            ? nil
+            : IterScoreValue.fromCompositeScore(scored.reduce(0, +) / Double(scored.count))
+        let toolCount = sessions.reduce(0) { $0 + $1.tools.count }
+
+        return [
+            KPITileData(
+                label: "sessions",
+                value: sessions.isEmpty && store.isLoading ? "--" : "\(sessions.count)",
+                unit: nil,
+                delta: .flat("latest"),
+                sparkline: sessions.map { Double($0.tools.count) }
+            ),
+            KPITileData(
+                label: "scored",
+                value: sessions.isEmpty && store.isLoading ? "--" : "\(scored.count)",
+                unit: nil,
+                delta: .flat("outcomes"),
+                sparkline: scored
+            ),
+            KPITileData(
+                label: "avg score",
+                value: averageScore.map(String.init) ?? "--",
+                unit: nil,
+                delta: .flat(scored.isEmpty ? "pending" : "latest"),
+                sparkline: scored
+            ),
+            KPITileData(
+                label: "tool calls",
+                value: sessions.isEmpty && store.isLoading ? "--" : "\(toolCount)",
+                unit: nil,
+                delta: .flat("captured"),
+                sparkline: sessions.map { Double($0.tools.count) }
+            )
+        ]
+    }
+}
+
+private struct SessionsSection: View {
+    @Environment(\.colorScheme) private var colorScheme
+
+    let count: String
+    let sessions: [SessionListItem]
+    let layoutVariant: LayoutVariant
+    let isLoading: Bool
+    let onSelectSession: (String) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: IterSpacing.gapSmall) {
+            HStack(spacing: IterSpacing.gapSmall) {
+                Text(verbatim: "Sessions")
+                    .font(IterFont.sansSectionTitle)
+                    .foregroundStyle(Color.iterTextPrimary(for: colorScheme))
+
+                Text(verbatim: count)
+                    .font(IterFont.monoTiny)
+                    .foregroundStyle(Color.iterTextTertiary(for: colorScheme))
+                    .padding(.horizontal, 5)
+                    .frame(height: 18)
+                    .background(Color.iterSelected(for: colorScheme))
+                    .clipShape(.rect(cornerRadius: IterRadius.scoreChip))
+
+                Spacer()
+            }
+
+            Group {
+                switch layoutVariant {
+                case .table:
+                    SessionTable(
+                        sessions: sessions,
+                        emptyMessage: "No sessions yet.",
+                        isLoading: isLoading,
+                        showsAuthorColumn: true
+                    ) { session in
+                        onSelectSession(session.id)
+                    }
+                case .cards:
+                    SessionCards(sessions: sessions) { session in
+                        onSelectSession(session.id)
+                    }
+                case .feed:
+                    SessionFeed(groups: feedGroups) { session in
+                        onSelectSession(session.id)
+                    }
+                }
+            }
+            .id(layoutVariant)
+            .transition(.opacity)
+        }
+        .animation(.easeInOut(duration: 0.08), value: layoutVariant)
+    }
+
+    private var feedGroups: [(day: String, sessions: [SessionListItem])] {
+        guard !sessions.isEmpty else {
+            return [(day: "Today", sessions: [])]
+        }
+
+        return sessions.reduce(into: [(day: String, sessions: [SessionListItem])]()) { groups, session in
+            let day = feedDay(for: session)
+            if let index = groups.firstIndex(where: { $0.day == day }) {
+                groups[index].sessions.append(session)
+            } else {
+                groups.append((day: day, sessions: [session]))
+            }
+        }
+    }
+
+    private func feedDay(for session: SessionListItem) -> String {
+        switch session.when {
+        case "Yesterday":
+            return "Yesterday"
+        case let value where value.count == 3:
+            return value
+        default:
+            return "Today"
+        }
+    }
+}
+
+private struct SessionsInlineRetryBanner: View {
+    @Environment(\.colorScheme) private var colorScheme
+
+    let message: String
+    let retry: () -> Void
+
+    var body: some View {
+        HStack(spacing: IterSpacing.gapSmall) {
+            Image(systemName: "exclamationmark.triangle")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(Color.iterWarn(for: colorScheme))
+                .accessibilityHidden(true)
+
+            Text(verbatim: message)
+                .font(IterFont.sansSmall)
+                .foregroundStyle(Color.iterTextSecondary(for: colorScheme))
+                .lineLimit(2)
+
+            Spacer()
+
+            IterButton(title: "Retry", action: retry)
+        }
+        .padding(.horizontal, IterSpacing.gapMedium)
+        .frame(minHeight: 36)
+        .background(Color.iterWarnSoft(for: colorScheme))
+        .clipShape(.rect(cornerRadius: IterRadius.card))
+        .overlay {
+            RoundedRectangle(cornerRadius: IterRadius.card)
+                .stroke(Color.iterBorder(for: colorScheme), lineWidth: 1)
+        }
     }
 }
 
@@ -1002,6 +1233,91 @@ private struct StackShareSheet: View {
     }
 }
 
+private struct SessionsRailCards: View {
+    let sessions: [SessionSummary]
+    let members: [TeamMemberAggregate]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: IterSpacing.gapMedium) {
+            RailCard(
+                title: "Recent captures",
+                count: "\(sessions.count)",
+                items: recentItems
+            )
+
+            RailCard(
+                title: "Harness mix",
+                count: "\(harnessItems.count)",
+                items: harnessItems
+            )
+        }
+    }
+
+    private var recentItems: [RailItem] {
+        sessions.prefix(5).map { session in
+            let metadata = [
+                memberName(for: session.userID),
+                harnessLabel(session.harness),
+                durationLabel(for: session)
+            ].joined(separator: " · ")
+
+            return RailItem(
+                title: title(from: session.redactedPrompt),
+                metadata: metadata,
+                primaryAction: nil,
+                secondaryAction: nil
+            )
+        }
+    }
+
+    private var harnessItems: [RailItem] {
+        let counts = Dictionary(grouping: sessions, by: \.harness)
+            .mapValues(\.count)
+            .sorted { lhs, rhs in
+                lhs.value == rhs.value ? lhs.key < rhs.key : lhs.value > rhs.value
+            }
+
+        return counts.map { harness, count in
+            RailItem(
+                title: harnessLabel(harness),
+                metadata: "\(count) session\(count == 1 ? "" : "s")",
+                primaryAction: nil,
+                secondaryAction: nil
+            )
+        }
+    }
+
+    private func memberName(for userID: UUID) -> String {
+        members.first(where: { $0.userID == userID })?.displayName ?? "Teammate"
+    }
+
+    private func title(from prompt: String) -> String {
+        let trimmed = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "Captured coding session" }
+        let firstLine = trimmed.split(separator: "\n").first.map(String.init) ?? trimmed
+        return firstLine.count > 64 ? String(firstLine.prefix(64)) + "..." : firstLine
+    }
+
+    private func harnessLabel(_ rawValue: String) -> String {
+        (HarnessID(rawValue: rawValue) ?? .codex).rawValue.replacingOccurrences(of: "_", with: " ")
+    }
+
+    private func durationLabel(for session: SessionSummary) -> String {
+        let seconds: Int
+        if let wallTimeMs = session.wallTimeMs {
+            seconds = max(0, wallTimeMs / 1_000)
+        } else if let endedAt = session.endedAt {
+            seconds = max(0, Int(endedAt.timeIntervalSince(session.startedAt)))
+        } else {
+            return "--"
+        }
+
+        let minutes = max(1, seconds / 60)
+        if minutes < 60 { return "\(minutes)m" }
+        return String(format: "%.1fh", Double(minutes) / 60.0)
+    }
+}
+
 private struct StackShareRow: View {
     @Environment(\.colorScheme) private var colorScheme
 
@@ -1028,6 +1344,7 @@ private struct RightRailView: View {
     let route: Route
     let dashboard: DashboardMeResponse?
     let teamDashboard: DashboardTeamResponse?
+    let teamSessions: [SessionSummary]
     let stackStore: StackStore
     let onNavigate: (Route) -> Void
 
@@ -1042,6 +1359,8 @@ private struct RightRailView: View {
                     MeRailCards(dashboard: dashboard, stackStore: stackStore)
                 } else if route.matchesTopLevel(.team) {
                     TeamRailCards(dashboard: teamDashboard)
+                } else if route.matchesTopLevel(.sessions) {
+                    SessionsRailCards(sessions: teamSessions, members: teamDashboard?.members ?? [])
                 }
                 Spacer()
             }

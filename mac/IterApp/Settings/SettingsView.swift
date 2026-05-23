@@ -222,7 +222,7 @@ struct SettingsView: View {
     }
 
     private var displayName: String {
-        dashboard?.user.displayName ?? sessionStore.displayName ?? sessionStore.userId ?? "signed out"
+        dashboard?.user.displayName ?? sessionStore.displayName ?? "signed out"
     }
 
     private var email: String {

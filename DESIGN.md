@@ -119,8 +119,8 @@ Initials in a 4px-rounded square; mono font; tint per teammate seeded from a fix
 └──────────┴──────────────────────────────────────────────┴───────────┘
 ```
 
-- **macOS window chrome**: traffic lights left, mono-style title centered, daemon-status pill + ⌘K + theme toggle right (`styles.css:96-146`).
-- **Sidebar**: workspace switcher → nav (Me / Team / Sessions / Stack) → active-stack pills → recent sessions → daemon footer with green pulse dot. Nav item active state: `--selected` bg, t1 text, accent icon, font-weight 500.
+- **macOS window chrome**: use the native close/minimize/zoom controls only; the in-app titlebar keeps the mono-style title centered with daemon-status pill + ⌘K + theme toggle right (`styles.css:96-146`).
+- **Sidebar**: workspace switcher/profile menu → nav (Me / Team / Sessions / Stack) → active-stack pills → recent sessions → daemon footer with green pulse dot. The profile menu shows the user's name or email address, never a raw subject UUID. Nav item active state: `--selected` bg, t1 text, accent icon, font-weight 500.
 - **Subbar segmented control**: `Table · Cards · Feed` — layout variant is **content-level**, not per-screen. Tweaks panel mirrors this control.
 - **Right rail**: dropped when in Session detail's two-column grid; present on Me/Team views as `--rail` background with contextual cards (refinements, suggestions, active-now teammates).
 - The shell composes as **one Mac window** (`max-width: 1480px; max-height: 940px`). SwiftUI implementation owns its own real window chrome — but the internal layout grid and dimensions are binding.
