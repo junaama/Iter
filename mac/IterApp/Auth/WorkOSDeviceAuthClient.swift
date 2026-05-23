@@ -99,8 +99,8 @@ struct WorkOSDeviceAuthClient {
             accessToken: payload.accessToken,
             refreshToken: payload.refreshToken,
             idToken: payload.idToken,
-            tokenType: payload.tokenType,
-            expiresIn: TimeInterval(payload.expiresIn)
+            tokenType: payload.tokenType ?? "Bearer",
+            expiresIn: TimeInterval(payload.expiresIn ?? 0)
         )
     }
 
@@ -150,8 +150,12 @@ private struct TokenPayload: Decodable {
     let accessToken: String
     let refreshToken: String
     let idToken: String?
-    let tokenType: String
-    let expiresIn: Int
+    // WorkOS's user_management/authenticate response omits the OAuth-style
+    // token_type and expires_in fields. They're optional here because
+    // neither is consumed downstream (SessionStore.apply derives expiry
+    // from the access JWT's `exp` claim).
+    let tokenType: String?
+    let expiresIn: Int?
 
     enum CodingKeys: String, CodingKey {
         case accessToken = "access_token"
