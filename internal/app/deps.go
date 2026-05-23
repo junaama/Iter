@@ -22,6 +22,7 @@ import (
 
 	"github.com/iter-dev/iter/internal/auth"
 	"github.com/iter-dev/iter/internal/embed"
+	"github.com/iter-dev/iter/internal/langfuse"
 	"github.com/iter-dev/iter/internal/llm"
 	"github.com/iter-dev/iter/internal/ws"
 
@@ -135,6 +136,14 @@ type Deps struct {
 	// 401 — a webhook handler with no secret is a wide-open ingress
 	// and must fail closed.
 	WebhookSecrets WebhookSecrets
+
+	// Langfuse is the async, non-blocking tracing client used by the LLM
+	// router (wired via Router.Tracer at boot) and any future handler-
+	// level emission sites (scoring, suggest). Nil when the LANGFUSE_*
+	// env trio is unset — every call site is nil-safe (Submit/Close both
+	// no-op on a nil receiver) so non-prod boots without tracing still
+	// come up.
+	Langfuse *langfuse.Client
 	//   Modal  *modal.Client     // issue 057
 }
 

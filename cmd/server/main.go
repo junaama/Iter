@@ -29,6 +29,7 @@ import (
 	"github.com/iter-dev/iter/internal/db"
 	"github.com/iter-dev/iter/internal/embed"
 	"github.com/iter-dev/iter/internal/ingest"
+	"github.com/iter-dev/iter/internal/langfuse"
 	"github.com/iter-dev/iter/internal/llm"
 	iredis "github.com/iter-dev/iter/internal/redis"
 	"github.com/iter-dev/iter/internal/ws"
@@ -81,12 +82,32 @@ func main() {
 		defer batchPool.Close()
 	}
 
+	// Wire Langfuse tracing. Returns nil when LANGFUSE_* env trio is
+	// unset; the LLM router's Tracer is wired below only when the client
+	// is real, so the LLM path is unchanged in non-traced boots.
+	langfuseClient := buildLangfuseClient(logger)
+	if langfuseClient != nil {
+		defer func() {
+			ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+			defer cancel()
+			if err := langfuseClient.Close(ctx); err != nil {
+				logger.Warn("langfuse client close", "err", err)
+			}
+		}()
+	}
+
+	llmRouter := buildLLMRouter(logger)
+	if llmRouter != nil && langfuseClient != nil {
+		llmRouter.Tracer = langfuseClient
+	}
+
 	deps := app.Deps{
 		Logger:       logger,
 		BuildVersion: version,
-		LLM:          buildLLMRouter(logger),
+		LLM:          llmRouter,
 		DB:           pool,
 		BatchDB:      batchPool,
+		Langfuse:     langfuseClient,
 	}
 
 	// Wire Redis when REDIS_URL is set; otherwise log and continue with a
@@ -458,6 +479,32 @@ func buildEmbedRouter(logger *slog.Logger, rdb embed.RedisLike) *embed.Router {
 		Priority:  []string{"voyage", "openai", "google"},
 		Cache:     cache,
 	})
+}
+
+// buildLangfuseClient constructs the Langfuse ingestion client from the
+// LANGFUSE_BASE_URL / LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY trio.
+// Returns nil (with an Info log) when the trio is incomplete — that's a
+// supported state: LLM calls still run, just without trace emission. A
+// construction error is logged at Error level and treated the same way;
+// tracing problems must never fail boot.
+func buildLangfuseClient(logger *slog.Logger) *langfuse.Client {
+	cfg, err := langfuse.ConfigFromEnv()
+	if err != nil {
+		if errors.Is(err, langfuse.ErrDisabled) {
+			logger.Info("langfuse tracing disabled (LANGFUSE_* env unset)")
+		} else {
+			logger.Error("langfuse: ConfigFromEnv failed; tracing disabled", "err", err)
+		}
+		return nil
+	}
+	cfg.Logger = logger
+	client, err := langfuse.NewClient(cfg)
+	if err != nil {
+		logger.Error("langfuse: NewClient failed; tracing disabled", "err", err)
+		return nil
+	}
+	logger.Info("langfuse tracing enabled", "base_url", cfg.BaseURL)
+	return client
 }
 
 // buildAuthVerifier constructs the WorkOS JWT verifier from environment
