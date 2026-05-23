@@ -1,0 +1,11 @@
+.git
+.env
+.env*
+.venv
+.claude
+.agents
+.DS_Store
+__pycache__
+modal/__pycache__
+mac/build
+server

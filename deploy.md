@@ -23,7 +23,7 @@ The `iter` Railway project uses three long-lived environments. Each environment 
 | Environment | Purpose | Postgres service | Redis service | App service state |
 |---|---|---|---|---|
 | `dev` | Local/dev integration against cloud-managed data services. Placeholder provider keys are allowed. | `Postgres-IVFh` | `Redis` | `iter-server` variables populated; no binary deployed yet. |
-| `staging` | Main-branch verification target before production promotion. Production-grade secrets required before external smoke tests. | `Postgres-f-fd` | `Redis-B2wt` | `iter-server` variables partially populated; no binary deployed yet. |
+| `staging` | Main-branch verification target before production promotion. Production-grade secrets required before external smoke tests. | `Postgres-f-fd` | `Redis-B2wt` | `iter-server` manually deployed at `https://iter-server-staging.up.railway.app`; `/health` verified. |
 | `production` | Manual promotion target for iter.dev. | `Postgres` | `Redis-6Z2f` | `iter-server` variables partially populated; no binary deployed yet. |
 
 The production environment also contains older Postgres services from earlier provisioning attempts. The canonical production database for Iter v1 is the `Postgres` service unless a later decision log entry changes it.
@@ -132,9 +132,21 @@ Railway and BetterStack both probe `/health` every 30s.
 
 ## Deploy command
 
-### Staging (automatic on push to `main`)
+### Staging
 
-Railway auto-deploys from `main`. No manual step.
+Until GitHub-source auto-deploy is wired in the Railway dashboard, staging is deployed manually from the repo root:
+
+```bash
+railway up --service iter-server --environment staging
+```
+
+The staging service uses the repo `Dockerfile`, which builds `cmd/server`, installs `goose`, and runs:
+
+```bash
+goose -dir /app/migrations postgres "$DATABASE_URL_SUPERUSER" up && exec server
+```
+
+Current generated staging URL: `https://iter-server-staging.up.railway.app`.
 
 ### Production (manual promotion)
 
@@ -294,6 +306,9 @@ Renaming a CI job (the `name:` key) is a breaking change to branch protection an
 | `scripts/verify-rls-bypass.sh` passes against the live Railway DB. | [x] | [x] | [x] |
 | `REDIS_URL` set on `iter-server`. | [x] | [x] | [x] |
 | R2 free-tier guardrail vars set. | [x] | [x] | [x] |
+| `iter-server` binary deployed. | [ ] | [x] | [ ] |
+| Generated Railway domain verified. | [x] | [x] | [ ] |
+| `/health` returns `200` with `"ok":true`. | [ ] | [x] | [ ] |
 | WorkOS app configured with matching redirect URI. | [ ] | [ ] | [ ] |
 | All LLM provider keys verified with a smoke call. | [ ] | [ ] | [ ] |
 | R2 bucket created via `wrangler r2 bucket create iter-archive-prod`; versioning + lifecycle (Infrequent Access at 1y) applied. | [ ] | [ ] | [ ] |

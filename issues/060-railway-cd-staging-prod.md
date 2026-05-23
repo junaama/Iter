@@ -5,9 +5,11 @@ depends-on:
   - 059-github-actions-ci
 ---
 
-# HITL — requires Railway dashboard configuration
+# HITL remainder — Railway dashboard auto-deploy and production promotion
 
 CD wiring requires Railway dashboard work + linking to GitHub. AFK workers should skip this issue.
+
+The AFK staging deploy subset has been completed. The remaining work is the dashboard/GitHub auto-deploy and production promotion configuration.
 
 ## Parent PRD
 
@@ -38,6 +40,28 @@ Specifically:
 - [ ] Build cache enabled
 - [ ] Rollback drill: known-bad build → `railway rollback` → previous version live in ≤2 minutes; documented in PR
 - [ ] `deploy.md` updated with the resolved service names + commands
+
+## AFK staging deploy completed — 2026-05-23
+
+- Added repo-level `Dockerfile` and `.dockerignore` for Railway builds.
+- Docker image builds `cmd/server`, installs `goose` v3.27.1, copies `migrations/`, and starts with `goose -dir /app/migrations postgres "$DATABASE_URL_SUPERUSER" up && exec server`.
+- Local Docker build passed: `docker build -t iter-server:060 .`.
+- Set a generated staging-only `ITER_JWT_SECRET` in Railway without printing the value.
+- Manual staging deploy succeeded: deployment `f78b16b9-86e7-497c-917b-4e050dc929fc`.
+- Generated staging domain: `https://iter-server-staging.up.railway.app`.
+- Verified staging health:
+
+```json
+{"ok":true,"version":"dev","db":"ok","redis":"ok","llm_routes":{},"embed_routes":{},"uptime_seconds":49}
+```
+
+Remaining HITL work:
+
+- Configure GitHub-source auto-deploy from `main` to staging in the Railway dashboard.
+- Confirm production does not auto-deploy and document the promotion path.
+- Enable/confirm Railway build cache if it is dashboard-only.
+- Run the deliberate staging rollback drill and document the result.
+- Finish production-grade secret provisioning from issue 058 before external smoke tests.
 
 ## Blocked by
 
