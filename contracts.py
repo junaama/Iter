@@ -105,6 +105,21 @@ class SessionContext(BaseModel):
 
 
 # ============================================================================
+# Local daemon IPC
+# ============================================================================
+
+class DaemonStatusResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    running: bool
+    current_task: Optional[str] = None
+    idle_since: Optional[datetime] = None
+    last_session_at: Optional[datetime] = None
+    captured_today: int = Field(ge=0)
+    paused: bool
+
+
+# ============================================================================
 # CLI ↔ cloud: POST /v1/suggest
 # ============================================================================
 

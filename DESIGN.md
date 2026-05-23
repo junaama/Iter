@@ -14,7 +14,7 @@ Visual language and locked design tokens for Iter v1. Source of truth for the Sw
 
 The prototype is **reference, not production code**. Match the visual output pixel-for-pixel in SwiftUI; don't port React/CSS structure literally. Don't render the prototype in a browser unless asked — every token, dimension, and rule is in the source files. See `design/dashboard-prototype/README.md`.
 
-Screens **not yet designed**: menubar dropdown, stack/simulate, settings. Their layouts must follow the same design language captured below.
+Screens **not yet designed**: stack/simulate, settings. Their layouts must follow the same design language captured below.
 
 Chat transcript at `design/dashboard-prototype/chats/chat1.md` records the intent: "Dense, data-rich, keyboard-driven (Linear-ish)" with "Realistic engineer names + real-sounding repos/tasks."
 
@@ -128,6 +128,15 @@ Initials in a 4px-rounded square; mono font; tint per teammate seeded from a fix
 ## Core components
 
 Visual specs locked. SwiftUI names suggested; final naming follows the SwiftUI conventions of `swiftui-expert-skill`.
+
+
+### Menubar dropdown
+- The `NSStatusItem` renders a mono lowercase `i`: coral when connected/running, warn-tinted when paused, and muted with strikethrough when disconnected.
+- Popover width is 304px, uses the same panel token, 1px dividers, dense 32-42px rows, and no card-in-card framing.
+- Header reads `Iter — running`, `Iter — paused`, or `Iter — disconnected` with the standard good/warn/bad status dot and daemon version chip.
+- Activity rows show either `Currently ingesting` plus the daemon task or `Idle since` plus a relative time, followed by `Last session captured`.
+- Commands are icon-leading rows: Open Dashboard, Share my stack, Pause/Resume capture, Quit Iter, and a bottom Settings row. Open Dashboard routes to Me; Share my stack routes to Stack and opens the share sheet; Settings routes to `Route.settings`.
+- Daemon status is refreshed once on install for icon state and every 5s only while the dropdown is open. Closing the popover cancels that polling task.
 
 ### Onboarding sign-in card
 - First launch shows a single centered WorkOS device sign-in card using the same panel, border, 8px card radius, IBM Plex, and coral primary button tokens as the dashboard shell.

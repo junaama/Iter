@@ -40,6 +40,8 @@ type Server struct {
 type State struct {
 	mu                    sync.RWMutex
 	paused                bool
+	currentTask           string
+	idleSince             *time.Time
 	lastSessionAt         *time.Time
 	capturedToday         int
 	pendingSuggestions    []localSuggestion
@@ -48,6 +50,8 @@ type State struct {
 
 type Status struct {
 	Running       bool       `json:"running"`
+	CurrentTask   *string    `json:"current_task,omitempty"`
+	IdleSince     *time.Time `json:"idle_since,omitempty"`
 	LastSessionAt *time.Time `json:"last_session_at"`
 	CapturedToday int        `json:"captured_today"`
 	Paused        bool       `json:"paused"`
@@ -90,6 +94,7 @@ func NewServer(cfg Config) (*Server, error) {
 	if cfg.AppVersion != "" && major(version) != major(cfg.AppVersion) {
 		return nil, fmt.Errorf("daemon/app major version mismatch: daemon=%s app=%s", version, cfg.AppVersion)
 	}
+	idleSince := time.Now().UTC()
 	socketPath := cfg.SocketPath
 	if socketPath == "" {
 		socketPath = DefaultSocketPath()
@@ -102,7 +107,7 @@ func NewServer(cfg Config) (*Server, error) {
 		socketPath: socketPath,
 		version:    version,
 		logger:     logger,
-		state:      &State{},
+		state:      &State{idleSince: &idleSince},
 	}, nil
 }
 
@@ -181,6 +186,8 @@ func (s *Server) dispatch(req request) response {
 		status := s.state.Status()
 		return response{ID: req.ID, Result: map[string]any{
 			"running":         status.Running,
+			"current_task":    status.CurrentTask,
+			"idle_since":      status.IdleSince,
 			"last_session_at": status.LastSessionAt,
 			"captured_today":  status.CapturedToday,
 			"paused":          status.Paused,
@@ -299,11 +306,26 @@ func (s *Server) suppressPattern(req request) response {
 	}}
 }
 
+func (s *Server) SetCurrentTask(task string) {
+	s.state.SetCurrentTask(task, time.Now().UTC())
+}
+
+func (s *Server) RecordSessionCaptured(at time.Time) {
+	s.state.RecordSessionCaptured(at)
+}
+
 func (s *State) Status() Status {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	var currentTask *string
+	if s.currentTask != "" {
+		task := s.currentTask
+		currentTask = &task
+	}
 	return Status{
 		Running:       true,
+		CurrentTask:   currentTask,
+		IdleSince:     s.idleSince,
 		LastSessionAt: s.lastSessionAt,
 		CapturedToday: s.capturedToday,
 		Paused:        s.paused,
@@ -314,6 +336,29 @@ func (s *State) SetPaused(paused bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.paused = paused
+}
+
+func (s *State) SetCurrentTask(task string, now time.Time) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	task = strings.TrimSpace(task)
+	s.currentTask = task
+	if task == "" {
+		idleSince := now.UTC()
+		s.idleSince = &idleSince
+		return
+	}
+	s.idleSince = nil
+}
+
+func (s *State) RecordSessionCaptured(at time.Time) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	capturedAt := at.UTC()
+	s.currentTask = ""
+	s.idleSince = &capturedAt
+	s.lastSessionAt = &capturedAt
+	s.capturedToday++
 }
 
 func (s *State) EnqueueSuggestion(suggestion localSuggestion) {

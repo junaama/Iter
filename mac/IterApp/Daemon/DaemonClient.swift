@@ -4,6 +4,8 @@ import Observation
 
 struct DaemonStatus: Equatable {
     var running: Bool = false
+    var currentTask: String?
+    var idleSince: Date?
     var lastSessionAt: Date?
     var capturedToday: Int = 0
     var paused: Bool = false
@@ -20,7 +22,6 @@ final class DaemonClient {
 
     private let socketPath: String
     private let appVersion: String
-    private var monitorTask: Task<Void, Never>?
     private var suggestionTask: Task<Void, Never>?
 
     init(
@@ -32,23 +33,45 @@ final class DaemonClient {
     }
 
     func start() {
-        guard monitorTask == nil else { return }
+        guard suggestionTask == nil else { return }
         SuggestionNotificationPresenter.shared.configure { [weak self] suggestion in
             await self?.suppressPattern(for: suggestion)
         }
         Task {
             await SuggestionNotificationPresenter.shared.prepare()
         }
-        monitorTask = Task { await monitor() }
         suggestionTask = Task { await watchSuggestions() }
     }
 
-    func pause() {
-        Task { await sendControl("pause") }
+    func stop() {
+        suggestionTask?.cancel()
+        suggestionTask = nil
     }
 
-    func resume() {
-        Task { await sendControl("resume") }
+    func pause() async {
+        await sendControl("pause")
+    }
+
+    func resume() async {
+        await sendControl("resume")
+    }
+
+    func refresh() async {
+        do {
+            let versionResult = try await request("version")
+            let version = versionResult["version"] as? String ?? ""
+            daemonVersion = version
+            versionMismatch = Self.major(version) != Self.major(appVersion)
+
+            let statusResult = try await request("status")
+            status = Self.parseStatus(statusResult)
+            connected = true
+            lastError = nil
+        } catch {
+            connected = false
+            status = DaemonStatus()
+            lastError = error.localizedDescription
+        }
     }
 
     var footerLabel: String {
@@ -63,31 +86,6 @@ final class DaemonClient {
             return "last \(Self.relativeTime(from: lastSessionAt))"
         }
         return "\(status.capturedToday) captured today"
-    }
-
-    private func monitor() async {
-        var backoff: TimeInterval = 0.25
-        while !Task.isCancelled {
-            do {
-                let versionResult = try await request("version")
-                let version = versionResult["version"] as? String ?? ""
-                daemonVersion = version
-                versionMismatch = Self.major(version) != Self.major(appVersion)
-
-                let statusResult = try await request("status")
-                status = Self.parseStatus(statusResult)
-                connected = true
-                lastError = nil
-                backoff = 0.25
-                try? await Task.sleep(nanoseconds: 5_000_000_000)
-            } catch {
-                connected = false
-                status = DaemonStatus()
-                lastError = error.localizedDescription
-                try? await Task.sleep(nanoseconds: UInt64(backoff * 1_000_000_000))
-                backoff = min(backoff * 2, 2)
-            }
-        }
     }
 
     private func watchSuggestions() async {
@@ -224,6 +222,8 @@ final class DaemonClient {
     nonisolated private static func parseStatus(_ result: [String: Any]) -> DaemonStatus {
         DaemonStatus(
             running: result["running"] as? Bool ?? false,
+            currentTask: result["current_task"] as? String,
+            idleSince: parseDate(result["idle_since"]),
             lastSessionAt: parseDate(result["last_session_at"]),
             capturedToday: result["captured_today"] as? Int ?? 0,
             paused: result["paused"] as? Bool ?? false
@@ -244,7 +244,7 @@ final class DaemonClient {
         return head.flatMap { Int($0) } ?? 0
     }
 
-    nonisolated private static func relativeTime(from date: Date) -> String {
+    nonisolated static func relativeTime(from date: Date) -> String {
         let seconds = max(0, Int(Date().timeIntervalSince(date)))
         if seconds < 60 { return "\(seconds)s ago" }
         let minutes = seconds / 60

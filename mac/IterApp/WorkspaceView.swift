@@ -7,6 +7,7 @@ enum Route: Hashable {
     case team
     case sessions
     case stack
+    case settings
     case sessionDetail(id: String)
 
     var title: String {
@@ -19,6 +20,8 @@ enum Route: Hashable {
             return "Sessions"
         case .stack:
             return "Stack"
+        case .settings:
+            return "Settings"
         case .sessionDetail:
             return "Session"
         }
@@ -28,6 +31,8 @@ enum Route: Hashable {
         switch self {
         case .sessionDetail(let id):
             return "Me / sessions / \(id)"
+        case .settings:
+            return "Workspace / Settings"
         default:
             return "Workspace / \(title)"
         }
@@ -35,7 +40,7 @@ enum Route: Hashable {
 
     var showsRail: Bool {
         switch self {
-        case .sessionDetail:
+        case .sessionDetail, .settings:
             return false
         default:
             return true
@@ -64,7 +69,7 @@ enum Route: Hashable {
 
     func matchesTopLevel(_ candidate: Route) -> Bool {
         switch (self, candidate) {
-        case (.me, .me), (.team, .team), (.sessions, .sessions), (.stack, .stack):
+        case (.me, .me), (.team, .team), (.sessions, .sessions), (.stack, .stack), (.settings, .settings):
             return true
         default:
             return false
@@ -114,8 +119,7 @@ final class LayoutVariantStore {
 struct WorkspaceView: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(DaemonClient.self) private var daemonClient
-
-    @State private var route: Route = .me
+    @Environment(WorkspaceRouter.self) private var router
     @State private var layoutStore = LayoutVariantStore()
     @State private var dashboardMeStore = DashboardMeStore()
     @State private var stackStore = StackStore()
@@ -125,30 +129,32 @@ struct WorkspaceView: View {
     @FocusState private var searchFocused: Bool
 
     var body: some View {
+        @Bindable var router = router
+
         ZStack {
             Color.iterStageBackdrop(for: colorScheme)
                 .ignoresSafeArea()
 
             VStack(spacing: 0) {
                 TitlebarView(
-                    route: route,
+                    route: router.route,
                     searchText: $searchText,
                     showsSearchPopover: $showsSearchPopover,
                     searchFocused: $searchFocused
                 )
 
                 HStack(spacing: 0) {
-                    SidebarView(route: $route, stackStore: stackStore) { route in
+                    SidebarView(route: $router.route, stackStore: stackStore) { route in
                         if case .sessionDetail = route {
-                            previousListRoute = self.route.detailBackRoute
+                            previousListRoute = router.route.detailBackRoute
                         }
-                        self.route = route
+                        router.route = route
                     }
 
                     VStack(spacing: 0) {
                         SubbarView(
                             layoutStore: layoutStore,
-                            route: $route,
+                            route: $router.route,
                             previousListRoute: previousListRoute,
                             isDashboardRefreshing: dashboardMeStore.isLoading
                         ) {
@@ -157,24 +163,24 @@ struct WorkspaceView: View {
 
                         HStack(spacing: 0) {
                             MainPaneView(
-                                route: route,
+                                route: router.route,
                                 layoutVariant: layoutStore.selected,
                                 dashboardMeStore: dashboardMeStore,
                                 stackStore: stackStore
                             ) { route in
                                 if case .sessionDetail = route {
-                                    previousListRoute = self.route.detailBackRoute
+                                    previousListRoute = router.route.detailBackRoute
                                 }
-                                self.route = route
+                                router.route = route
                             }
 
-                            if route.showsRail {
+                            if router.route.showsRail {
                                 RightRailView(
-                                    route: route,
+                                    route: router.route,
                                     dashboard: dashboardMeStore.dashboard,
                                     stackStore: stackStore
                                 )
-                                .frame(width: route.railWidth)
+                                .frame(width: router.route.railWidth)
                             }
                         }
                     }
@@ -199,6 +205,9 @@ struct WorkspaceView: View {
             .accessibilityHidden(true)
         }
         .frame(minWidth: 980, minHeight: 620)
+        .sheet(isPresented: $router.showsStackShareSheet) {
+            StackShareSheet()
+        }
         .onChange(of: searchFocused) { _, focused in
             if focused {
                 showsSearchPopover = true
@@ -620,10 +629,12 @@ private struct SidebarFooterView: View {
                 Spacer()
 
                 Button {
-                    if daemonClient.status.paused {
-                        daemonClient.resume()
-                    } else {
-                        daemonClient.pause()
+                    Task {
+                        if daemonClient.status.paused {
+                            await daemonClient.resume()
+                        } else {
+                            await daemonClient.pause()
+                        }
                     }
                 } label: {
                     Image(systemName: daemonClient.status.paused ? "play.fill" : "pause.fill")
@@ -866,8 +877,79 @@ private struct MainPaneView: View {
             return "The full sessions browser will render here."
         case .stack:
             return "Active stack harnesses, skills, and notes will render here."
+        case .settings:
+            return "Account, capture, retention, redaction, and notification settings will render here."
         case .sessionDetail(let id):
             return "Session detail stub for \(id)."
+        }
+    }
+}
+
+
+private struct StackShareSheet: View {
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(WorkspaceRouter.self) private var router
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: IterSpacing.gapMedium) {
+            HStack {
+                Text(verbatim: "Share stack")
+                    .font(IterFont.sansKPIValue)
+                    .foregroundStyle(Color.iterTextPrimary(for: colorScheme))
+
+                Spacer()
+
+                Button {
+                    router.showsStackShareSheet = false
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 11, weight: .semibold))
+                        .frame(width: 28, height: 28)
+                        .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(Color.iterTextTertiary(for: colorScheme))
+                .help("Close")
+                .accessibilityLabel("Close share stack")
+            }
+
+            VStack(alignment: .leading, spacing: IterSpacing.gapSmall) {
+                StackShareRow(label: "Harnesses", value: "Codex, OpenCode")
+                StackShareRow(label: "Skills", value: "SwiftUI, launchd, redaction")
+                StackShareRow(label: "Docs", value: "ARCHITECTURE.md, DESIGN.md")
+            }
+
+            HStack {
+                Spacer()
+
+                ShareLink(item: "Iter stack: Codex, OpenCode, SwiftUI guidance") {
+                    Label("Share", systemImage: "square.and.arrow.up")
+                }
+                .buttonStyle(.borderedProminent)
+            }
+        }
+        .padding(IterSpacing.gapLarge)
+        .frame(width: 420)
+        .background(Color.iterPanel(for: colorScheme))
+    }
+}
+
+private struct StackShareRow: View {
+    @Environment(\.colorScheme) private var colorScheme
+
+    let label: String
+    let value: String
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: IterSpacing.gapMedium) {
+            Text(verbatim: label)
+                .font(IterFont.monoLabel)
+                .foregroundStyle(Color.iterTextTertiary(for: colorScheme))
+                .frame(width: 72, alignment: .leading)
+
+            Text(verbatim: value)
+                .font(IterFont.sansBody)
+                .foregroundStyle(Color.iterTextPrimary(for: colorScheme))
         }
     }
 }
@@ -1094,6 +1176,7 @@ private struct DividerLine: View {
     WorkspaceView()
         .environment(ThemeStore())
         .environment(DaemonClient())
+        .environment(WorkspaceRouter())
         .preferredColorScheme(.light)
 }
 
@@ -1101,5 +1184,6 @@ private struct DividerLine: View {
     WorkspaceView()
         .environment(ThemeStore())
         .environment(DaemonClient())
+        .environment(WorkspaceRouter())
         .preferredColorScheme(.dark)
 }

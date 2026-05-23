@@ -46,15 +46,40 @@ func TestServerIPCMethods(t *testing.T) {
 	status := readResponse(t, reader, "3")
 	requireResult(t, status, "running", true)
 	requireResult(t, status, "paused", false)
+	if status["current_task"] != nil {
+		t.Fatalf("current_task = %#v, want nil", status["current_task"])
+	}
+	if _, ok := status["idle_since"].(string); !ok {
+		t.Fatalf("idle_since = %#v, want timestamp string", status["idle_since"])
+	}
 
-	writeRequest(t, conn, "4", "pause")
-	requireResponse(t, reader, "4", "paused", true)
+	server.SetCurrentTask("Codex prompt import")
+	writeRequest(t, conn, "4", "status")
+	activeStatus := readResponse(t, reader, "4")
+	requireResult(t, activeStatus, "current_task", "Codex prompt import")
+	if activeStatus["idle_since"] != nil {
+		t.Fatalf("idle_since = %#v, want nil while active", activeStatus["idle_since"])
+	}
 
+	capturedAt := time.Date(2026, 5, 22, 18, 30, 0, 0, time.UTC)
+	server.RecordSessionCaptured(capturedAt)
 	writeRequest(t, conn, "5", "status")
-	requireResponse(t, reader, "5", "paused", true)
+	capturedStatus := readResponse(t, reader, "5")
+	if capturedStatus["current_task"] != nil {
+		t.Fatalf("current_task = %#v, want nil after capture", capturedStatus["current_task"])
+	}
+	requireResult(t, capturedStatus, "last_session_at", "2026-05-22T18:30:00Z")
+	requireResult(t, capturedStatus, "idle_since", "2026-05-22T18:30:00Z")
+	requireResult(t, capturedStatus, "captured_today", float64(1))
 
-	writeRequest(t, conn, "6", "resume")
-	requireResponse(t, reader, "6", "paused", false)
+	writeRequest(t, conn, "6", "pause")
+	requireResponse(t, reader, "6", "paused", true)
+
+	writeRequest(t, conn, "7", "status")
+	requireResponse(t, reader, "7", "paused", true)
+
+	writeRequest(t, conn, "8", "resume")
+	requireResponse(t, reader, "8", "paused", false)
 
 	cancel()
 	if err := <-errCh; err != nil {

@@ -39,6 +39,9 @@
 		1A0000720000000000000001 /* SessionDetailClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000720000000000000011 /* SessionDetailClient.swift */; };
 		1A0000720000000000000002 /* SessionDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000720000000000000012 /* SessionDetailView.swift */; };
 		1A0000760000000000000001 /* SuggestionNotifications.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000760000000000000011 /* SuggestionNotifications.swift */; };
+		1A0000690000000000000001 /* WorkspaceRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000690000000000000011 /* WorkspaceRouter.swift */; };
+		1A0000690000000000000002 /* MenuBarController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000690000000000000012 /* MenuBarController.swift */; };
+		1A0000690000000000000003 /* MenubarDropdownView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000690000000000000013 /* MenubarDropdownView.swift */; };
 		1A0000740000000000000001 /* StackAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000740000000000000011 /* StackAPIClient.swift */; };
 		1A0000740000000000000002 /* StackMeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000740000000000000012 /* StackMeView.swift */; };
 		1A0000740000000000000003 /* StackModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000740000000000000013 /* StackModels.swift */; };
@@ -80,6 +83,9 @@
 		1A0000720000000000000011 /* SessionDetailClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionDetailClient.swift; sourceTree = "<group>"; };
 		1A0000720000000000000012 /* SessionDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionDetailView.swift; sourceTree = "<group>"; };
 		1A0000760000000000000011 /* SuggestionNotifications.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuggestionNotifications.swift; sourceTree = "<group>"; };
+		1A0000690000000000000011 /* WorkspaceRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceRouter.swift; sourceTree = "<group>"; };
+		1A0000690000000000000012 /* MenuBarController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarController.swift; sourceTree = "<group>"; };
+		1A0000690000000000000013 /* MenubarDropdownView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenubarDropdownView.swift; sourceTree = "<group>"; };
 		1A0000740000000000000011 /* StackAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StackAPIClient.swift; sourceTree = "<group>"; };
 		1A0000740000000000000012 /* StackMeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StackMeView.swift; sourceTree = "<group>"; };
 		1A0000740000000000000013 /* StackModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StackModels.swift; sourceTree = "<group>"; };
@@ -111,11 +117,13 @@
 				1A0000010000000000000011 /* IterApp.swift */,
 				1A0000010000000000000012 /* WorkspaceView.swift */,
 				1A0000010000000000000013 /* ThemeStore.swift */,
+				1A0000690000000000000011 /* WorkspaceRouter.swift */,
 				1A0000720000000000000011 /* SessionDetailClient.swift */,
 				1A0000720000000000000012 /* SessionDetailView.swift */,
 				1A0000700000000000000030 /* API */,
 				1A0000700000000000000031 /* Dashboard */,
 				1A0000680000000000000030 /* Daemon */,
+				1A0000690000000000000030 /* MenuBar */,
 				1A0000760000000000000030 /* Suggestions */,
 				1A0000740000000000000030 /* Stack */,
 				1A0000650000000000000030 /* Components */,
@@ -184,6 +192,15 @@
 				1A0000680000000000000011 /* DaemonClient.swift */,
 			);
 			path = Daemon;
+			sourceTree = "<group>";
+		};
+		1A0000690000000000000030 /* MenuBar */ = {
+			isa = PBXGroup;
+			children = (
+				1A0000690000000000000012 /* MenuBarController.swift */,
+				1A0000690000000000000013 /* MenubarDropdownView.swift */,
+			);
+			path = MenuBar;
 			sourceTree = "<group>";
 		};
 		1A0000760000000000000030 /* Suggestions */ = {
@@ -321,6 +338,9 @@
 				1A0000720000000000000001 /* SessionDetailClient.swift in Sources */,
 				1A0000720000000000000002 /* SessionDetailView.swift in Sources */,
 				1A0000760000000000000001 /* SuggestionNotifications.swift in Sources */,
+				1A0000690000000000000001 /* WorkspaceRouter.swift in Sources */,
+				1A0000690000000000000002 /* MenuBarController.swift in Sources */,
+				1A0000690000000000000003 /* MenubarDropdownView.swift in Sources */,
 				1A0000740000000000000001 /* StackAPIClient.swift in Sources */,
 				1A0000740000000000000002 /* StackMeView.swift in Sources */,
 				1A0000740000000000000003 /* StackModels.swift in Sources */,
