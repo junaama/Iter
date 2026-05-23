@@ -298,7 +298,7 @@ func buildArchiveScheduler(logger *slog.Logger, batchDB *pgxpool.Pool) *archive.
 
 	meterCfg := archive.MeterConfig{
 		AccountID:     os.Getenv("R2_ACCOUNT_ID"),
-		APIToken:      os.Getenv("CLOUDFLARE_API_TOKEN"),
+		APIToken:      os.Getenv("CLOUDFLARE_API_KEY"),
 		BucketName:    bucket,
 		FreeStorageGB: parseFloatEnv("R2_FREE_STORAGE_GB", 10),
 		FreeClassAOps: parseInt64Env("R2_FREE_CLASS_A_OPS", 1_000_000),
@@ -465,13 +465,15 @@ func buildEmbedRouter(logger *slog.Logger, rdb embed.RedisLike) *embed.Router {
 func buildAuthVerifier(logger *slog.Logger) *auth.Verifier {
 	jwksURL := os.Getenv("WORKOS_JWKS_URL")
 	issuer := os.Getenv("WORKOS_ISSUER")
+	// WORKOS_AUDIENCE is optional: AuthKit-issued session JWTs do not
+	// include an `aud` claim, so the underlying verifier skips the
+	// audience check when this is empty (see internal/auth/verifier.go).
 	audience := os.Getenv("WORKOS_AUDIENCE")
-	if jwksURL == "" || issuer == "" || audience == "" {
+	if jwksURL == "" || issuer == "" {
 		logger.Warn(
 			"WORKOS_* env vars incomplete; auth middleware will return 503 auth_unavailable on every authenticated request",
 			"have_jwks_url", jwksURL != "",
 			"have_issuer", issuer != "",
-			"have_audience", audience != "",
 		)
 		return nil
 	}

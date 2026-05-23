@@ -51,7 +51,8 @@ The server reads config from environment variables. The repo already has a `.env
 | `DATABASE_URL_BATCH` | no | `iter_batch` BYPASSRLS role; archive cron is skipped without it |
 | `REDIS_URL` | no | e.g. `redis://localhost:6379` — without it, ingest + embed workers don't start |
 | `PORT` | no | Defaults to `8080` |
-| `WORKOS_JWKS_URL`, `WORKOS_ISSUER`, `WORKOS_AUDIENCE` | for auth | Without all three, every authenticated request returns 503 |
+| `WORKOS_JWKS_URL`, `WORKOS_ISSUER` | for auth | Without both, every authenticated request returns 503. `WORKOS_JWKS_URL` = `https://api.workos.com/sso/jwks/<WORKOS_CLIENT_ID>`; `WORKOS_ISSUER` = your AuthKit domain (Dashboard → Authentication → AuthKit). |
+| `WORKOS_AUDIENCE` | optional | AuthKit session JWTs don't carry `aud`; leave unset. |
 | `WORKOS_API_KEY`, `WORKOS_CLIENT_ID`, `WORKOS_REDIRECT_URI` | for `/auth/*` | AuthKit login routes (device-code flow works without these) |
 | `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GOOGLE_AI_API_KEY` / `TOGETHER_API_KEY` | for LLM | Any subset; router skips missing providers |
 | `VOYAGE_API_KEY` | for embeddings | Voyage is the only real provider today |
