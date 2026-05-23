@@ -28,6 +28,15 @@ The `iter` Railway project uses three long-lived environments. Each environment 
 
 The production environment also contains older Postgres services from earlier provisioning attempts. The canonical production database for Iter v1 is the `Postgres` service unless a later decision log entry changes it.
 
+### Dev Langfuse service wiring
+
+The dev Langfuse stack runs in the same Railway project as `langfuse-web`, `langfuse-worker`, `clickhouse`, `minio`, and the canonical Redis service `Redis`.
+
+- `langfuse-web` URL: `https://langfuse-web-dev-6e72.up.railway.app`
+- `langfuse-web` and `langfuse-worker` use `REDIS_CONNECTION_STRING=${{Redis.REDIS_URL}}`; do not point them at the older lowercase `redis` service.
+- `langfuse-web` and `langfuse-worker` use MinIO credentials via `${{minio.MINIO_ROOT_USER}}` and `${{minio.MINIO_ROOT_PASSWORD}}` for `LANGFUSE_S3_EVENT_UPLOAD_*` and `LANGFUSE_S3_MEDIA_UPLOAD_*`.
+- `iter-server` dev has `LANGFUSE_BASE_URL`, `LANGFUSE_PUBLIC_KEY`, and `LANGFUSE_SECRET_KEY` set. A real `/api/public/ingestion` generation probe returned one `201` success on 2026-05-23.
+
 ## Environment variables (production)
 
 Set in Railway env vars per environment. Doppler deferred per phase 7.
@@ -98,7 +107,7 @@ BETTERSTACK_SOURCE_TOKEN=...
 # /api/public/ingestion endpoint. All three vars must be set for tracing
 # to enable; with any one unset, the binary logs
 # "langfuse tracing disabled" at boot and continues without emission.
-LANGFUSE_BASE_URL=https://langfuse-web-dev.up.railway.app   # scheme+host, no trailing slash
+LANGFUSE_BASE_URL=https://<langfuse-web-service>.up.railway.app   # scheme+host, no trailing slash
 LANGFUSE_PUBLIC_KEY=pk-lf-...
 LANGFUSE_SECRET_KEY=sk-lf-...                              # never log; never echo
 
@@ -322,7 +331,7 @@ Renaming a CI job (the `name:` key) is a breaking change to branch protection an
 | BetterStack monitors created for: /health, suggest P99, error rate, scoring batch, Postgres connections, WS connection count, trufflehog scan failure rate, **R2 storage (≥80% of 10 GB), R2 Class A ops (≥80% of 1M/mo), R2 Class B ops (≥80% of 10M/mo), R2 egress anomaly (>2× 7-day rolling baseline)**. | [ ] | [ ] | [ ] |
 | BetterStack on-call configured: email to founder. | [ ] | [ ] | [ ] |
 | status.iter.dev published. | n/a | n/a | [ ] |
-| Langfuse self-hosted on Railway, accessible at langfuse.iter.dev. | [ ] | [ ] | [ ] |
+| Langfuse self-hosted on Railway; ingestion probe succeeds. | [x] | [ ] | [ ] |
 | GitHub webhook configured for the iter repo (for outcome attachment when Iter dogfoods itself). | [ ] | [ ] | [ ] |
 | Linear webhook configured. | [ ] | [ ] | [ ] |
 | Domain DNS verified. | n/a | [ ] | [ ] |
