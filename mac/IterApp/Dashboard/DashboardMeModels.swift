@@ -65,7 +65,6 @@ enum DashboardMeDisplay {
         let currentWeekScore = meanScore(currentWeek)
         let previousWeekScore = meanScore(previousWeek)
         let acceptance = acceptanceRate(recent)
-        let timeSavedMinutes = sessionCount * 8
 
         return [
             KPITileData(
@@ -79,7 +78,7 @@ enum DashboardMeDisplay {
                 label: "acceptance %",
                 value: acceptance.map { "\($0)" } ?? "--",
                 unit: "%",
-                delta: recent.isEmpty ? .flat("waiting") : .flat("recent"),
+                delta: .flat(""),
                 sparkline: recent.compactMap(\.compositeScore)
             ),
             KPITileData(
@@ -88,16 +87,6 @@ enum DashboardMeDisplay {
                 unit: nil,
                 delta: scoreDelta(current: currentWeekScore, previous: previousWeekScore),
                 sparkline: trend.map { $0.compositeScore ?? 0 }
-            ),
-            KPITileData(
-                label: "time saved",
-                value: formatHours(minutes: timeSavedMinutes),
-                unit: "h",
-                delta: percentDelta(
-                    current: Double(currentWeekSessions * 8),
-                    previous: Double(previousWeekSessions * 8)
-                ),
-                sparkline: trend.map { Double($0.sessionCount * 8) }
             )
         ]
     }
@@ -130,10 +119,6 @@ enum DashboardMeDisplay {
         dashboard.recentSessions.isEmpty && dashboard.trend.allSatisfy { $0.compositeScore == nil }
     }
 
-    static func firstScoreEstimateHours(_ dashboard: DashboardMeResponse) -> Int {
-        dashboard.recentSessions.isEmpty ? 4 : 1
-    }
-
     private static func meanScore(_ points: [DashboardTrendPoint]) -> Int? {
         let scores = points.compactMap(\.compositeScore)
         guard !scores.isEmpty else { return nil }
@@ -159,19 +144,11 @@ enum DashboardMeDisplay {
     }
 
     private static func scoreDelta(current: Int?, previous: Int?) -> Delta {
-        guard let current, let previous else { return .flat("waiting") }
+        guard let current, let previous else { return .flat("") }
         let change = current - previous
         if change > 0 { return .increase("+\(change)") }
         if change < 0 { return .decrease("\(change)") }
         return .flat("0")
-    }
-
-    private static func formatHours(minutes: Int) -> String {
-        let hours = Double(minutes) / 60
-        if hours < 10 {
-            return String(format: "%.1f", hours)
-        }
-        return "\(Int(hours.rounded()))"
     }
 
     private static func harnessID(from rawValue: String) -> HarnessID {

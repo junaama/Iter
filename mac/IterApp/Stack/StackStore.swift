@@ -28,7 +28,7 @@ enum StackShareTarget {
 @MainActor
 @Observable
 final class StackStore {
-    var stack = EditableStack.detectedDraft()
+    var stack = EditableStack.empty()
     var loadState: StackLoadState = .idle
     var isSaving = false
     var isSharing = false
@@ -36,7 +36,7 @@ final class StackStore {
     var pendingSkillName = ""
     var pendingSkillSource = ""
     var pendingDocReference = ""
-    var teamMembers: [StackTeamMember] = StackStore.sampleTeamMembers
+    var teamMembers: [StackTeamMember] = []
     var sharedWithMe: [SharedStackSummary] = []
 
     private let api: StackAPIClient
@@ -59,8 +59,7 @@ final class StackStore {
     }
 
     var sidebarHarnessLabels: [String] {
-        let labels = stack.harnesses.map(\.shortCode)
-        return labels.isEmpty ? ["cx"] : Array(labels.prefix(4))
+        Array(stack.harnesses.map(\.shortCode).prefix(4))
     }
 
     func load() async {
@@ -77,15 +76,15 @@ final class StackStore {
                 stack = EditableStack.from(current, members: teamMembers)
                 loadState = .loaded
             } else {
-                stack = EditableStack.detectedDraft()
+                stack = EditableStack.empty()
                 loadState = .draft
             }
         } catch StackAPIError.notFound {
-            stack = EditableStack.detectedDraft()
+            stack = EditableStack.empty()
             loadState = .draft
         } catch {
             if stack.id == nil {
-                stack = EditableStack.detectedDraft()
+                stack = EditableStack.empty()
             }
             loadState = .offlineDraft(error.localizedDescription)
         }
@@ -228,7 +227,7 @@ final class StackStore {
                 avatarSeed: member.avatarSeed
             ))
         }
-        sharedWithMe = summaries.isEmpty ? Self.sampleSharedWithMe : summaries
+        sharedWithMe = summaries
     }
 
     private func upsertGrant(_ grant: StackShareGrant) {
@@ -255,41 +254,4 @@ final class StackStore {
         return initials.isEmpty ? "U" : initials.uppercased()
     }
 
-    static let sampleTeamMembers = [
-        StackTeamMember(
-            userID: UUID(uuidString: "11111111-1111-4111-8111-111111111111")!,
-            displayName: "Mina Chen",
-            initials: "MC",
-            avatarSeed: "mchen"
-        ),
-        StackTeamMember(
-            userID: UUID(uuidString: "22222222-2222-4222-8222-222222222222")!,
-            displayName: "Ana Yusuf",
-            initials: "AY",
-            avatarSeed: "ana"
-        ),
-        StackTeamMember(
-            userID: UUID(uuidString: "33333333-3333-4333-8333-333333333333")!,
-            displayName: "Lena Ito",
-            initials: "LI",
-            avatarSeed: "lena"
-        )
-    ]
-
-    private static let sampleSharedWithMe = [
-        SharedStackSummary(
-            userID: UUID(uuidString: "44444444-4444-4444-8444-444444444444")!,
-            displayName: "Mina Chen",
-            stackName: "Webhook verifier",
-            initials: "MC",
-            avatarSeed: "mchen"
-        ),
-        SharedStackSummary(
-            userID: UUID(uuidString: "55555555-5555-4555-8555-555555555555")!,
-            displayName: "Lena Ito",
-            stackName: "SwiftUI polish",
-            initials: "LI",
-            avatarSeed: "lena"
-        )
-    ]
 }

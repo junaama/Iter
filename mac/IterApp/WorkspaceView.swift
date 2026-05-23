@@ -120,6 +120,7 @@ struct WorkspaceView: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(DaemonClient.self) private var daemonClient
     @Environment(WorkspaceRouter.self) private var router
+
     @State private var layoutStore = LayoutVariantStore()
     @State private var dashboardMeStore = DashboardMeStore()
     @State private var stackStore = StackStore()
@@ -144,7 +145,7 @@ struct WorkspaceView: View {
                 )
 
                 HStack(spacing: 0) {
-                    SidebarView(route: $router.route, stackStore: stackStore) { route in
+                    SidebarView(route: $router.route, stackStore: stackStore, dashboardMeStore: dashboardMeStore) { route in
                         if case .sessionDetail = route {
                             previousListRoute = router.route.detailBackRoute
                         }
@@ -180,7 +181,7 @@ struct WorkspaceView: View {
                                     dashboard: dashboardMeStore.dashboard,
                                     stackStore: stackStore
                                 )
-                                .frame(width: router.route.railWidth)
+                                    .frame(width: router.route.railWidth)
                             }
                         }
                     }
@@ -205,13 +206,13 @@ struct WorkspaceView: View {
             .accessibilityHidden(true)
         }
         .frame(minWidth: 980, minHeight: 620)
-        .sheet(isPresented: $router.showsStackShareSheet) {
-            StackShareSheet()
-        }
         .onChange(of: searchFocused) { _, focused in
             if focused {
                 showsSearchPopover = true
             }
+        }
+        .sheet(isPresented: $router.showsStackShareSheet) {
+            StackShareSheet(stackStore: stackStore)
         }
         .alert("Iter daemon out of date", isPresented: Bindable(daemonClient).versionMismatch) {
             Button("Quit and relaunch") {
@@ -388,12 +389,13 @@ private struct SidebarView: View {
     @Environment(DaemonClient.self) private var daemonClient
     @Binding var route: Route
     let stackStore: StackStore
+    let dashboardMeStore: DashboardMeStore
     let onNavigate: (Route) -> Void
 
     private let navItems: [SidebarNavItem] = [
-        SidebarNavItem(route: .me, title: "Me", symbol: "person", count: "47"),
-        SidebarNavItem(route: .team, title: "Team", symbol: "person.2", count: "132"),
-        SidebarNavItem(route: .sessions, title: "Sessions", symbol: "rectangle.stack", count: "all"),
+        SidebarNavItem(route: .me, title: "Me", symbol: "person", count: nil),
+        SidebarNavItem(route: .team, title: "Team", symbol: "person.2", count: nil),
+        SidebarNavItem(route: .sessions, title: "Sessions", symbol: "rectangle.stack", count: nil),
         SidebarNavItem(route: .stack, title: "Stack", symbol: "square.stack.3d.up", count: nil)
     ]
 
@@ -420,22 +422,24 @@ private struct SidebarView: View {
                 .padding(.horizontal, IterSpacing.gapSmall)
                 .padding(.top, IterSpacing.gapSmall)
 
-            SidebarSectionTitle(title: "Recent sessions", action: nil)
-                .padding(.top, IterSpacing.gapLarge)
+            let recentSessions = dashboardMeStore.dashboard?.recentSessions ?? []
+            if !recentSessions.isEmpty {
+                SidebarSectionTitle(title: "Recent sessions", action: nil)
+                    .padding(.top, IterSpacing.gapLarge)
 
-            VStack(spacing: 2) {
-                RecentSessionButton(title: "Backpressure session", tint: .codex) {
-                    onNavigate(.sessionDetail(id: "11111111-1111-4111-8111-111111111111"))
+                VStack(spacing: 2) {
+                    ForEach(recentSessions.prefix(5), id: \.id) { session in
+                        RecentSessionButton(
+                            title: SidebarView.sessionTitle(for: session),
+                            tint: SidebarView.tint(for: session.harness)
+                        ) {
+                            onNavigate(.sessionDetail(id: session.id))
+                        }
+                    }
                 }
-                RecentSessionButton(title: "Dashboard shell polish", tint: .claudeCode) {
-                    onNavigate(.sessionDetail(id: "22222222-2222-4222-8222-222222222222"))
-                }
-                RecentSessionButton(title: "Webhook verifier", tint: .opencode) {
-                    onNavigate(.sessionDetail(id: "33333333-3333-4333-8333-333333333333"))
-                }
+                .padding(.horizontal, 6)
+                .padding(.top, 6)
             }
-            .padding(.horizontal, 6)
-            .padding(.top, 6)
 
             Spacer(minLength: IterSpacing.gapLarge)
 
@@ -447,10 +451,22 @@ private struct SidebarView: View {
             DividerLine(axis: .vertical)
         }
     }
+
+    private static func sessionTitle(for session: DashboardRecentSession) -> String {
+        let trimmed = session.redactedPromptPreview.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { return "Session \(session.id.prefix(8))" }
+        let firstLine = trimmed.split(separator: "\n").first.map(String.init) ?? trimmed
+        return firstLine.count > 48 ? String(firstLine.prefix(48)) + "…" : firstLine
+    }
+
+    private static func tint(for harness: String) -> IterHarnessTint {
+        (HarnessID(rawValue: harness) ?? .codex).tint
+    }
 }
 
 private struct WorkspaceSwitcherView: View {
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(SessionStore.self) private var sessionStore
 
     var body: some View {
         HStack(spacing: IterSpacing.gapSmall) {
@@ -466,21 +482,27 @@ private struct WorkspaceSwitcherView: View {
                     .font(IterFont.sansCardTitle)
                     .foregroundStyle(Color.iterTextPrimary(for: colorScheme))
 
-                Text(verbatim: "priya@iter.dev")
+                Text(verbatim: sessionStore.displayName ?? sessionStore.userId ?? "signed in")
                     .font(IterFont.monoSmall)
                     .foregroundStyle(Color.iterTextTertiary(for: colorScheme))
+                    .lineLimit(1)
             }
 
             Spacer()
 
-            Image(systemName: "chevron.down")
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(Color.iterTextTertiary(for: colorScheme))
-                .accessibilityHidden(true)
+            Button {
+                sessionStore.signOut()
+            } label: {
+                Image(systemName: "rectangle.portrait.and.arrow.right")
+                    .font(.system(size: 11, weight: .semibold))
+                    .frame(width: 22, height: 22)
+                    .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(Color.iterTextTertiary(for: colorScheme))
+            .accessibilityLabel("Sign out")
         }
         .frame(height: 36)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Workspace iter core, priya at iter dot dev")
     }
 }
 
@@ -628,7 +650,7 @@ private struct SidebarFooterView: View {
 
                 Spacer()
 
-                Button {
+	                Button {
                     Task {
                         if daemonClient.status.paused {
                             await daemonClient.resume()
@@ -844,21 +866,19 @@ private struct MainPaneView: View {
         } else if route.matchesTopLevel(.stack) {
             StackMeView(store: stackStore)
         } else {
-            stubView
+            notImplementedView
         }
     }
 
-    private var stubView: some View {
+    private var notImplementedView: some View {
         VStack(alignment: .leading, spacing: IterSpacing.gapMedium) {
             Text(verbatim: route.title)
                 .font(IterFont.sansKPIValue)
                 .foregroundStyle(Color.iterTextPrimary(for: colorScheme))
 
-            Text(verbatim: stubCopy)
+            Text(verbatim: "Not implemented yet.")
                 .font(IterFont.sansBody)
                 .foregroundStyle(Color.iterTextSecondary(for: colorScheme))
-
-            StatusPillView(label: "\(layoutVariant.title.lowercased()) layout")
 
             Spacer()
         }
@@ -866,32 +886,21 @@ private struct MainPaneView: View {
         .padding(IterSpacing.mainPanePadding)
         .background(Color.iterPanel(for: colorScheme))
     }
-
-    private var stubCopy: String {
-        switch route {
-        case .me:
-            return "Personal metrics and sessions will render here."
-        case .team:
-            return "Team activity and teammate rollups will render here."
-        case .sessions:
-            return "The full sessions browser will render here."
-        case .stack:
-            return "Active stack harnesses, skills, and notes will render here."
-        case .settings:
-            return "Account, capture, retention, redaction, and notification settings will render here."
-        case .sessionDetail(let id):
-            return "Session detail stub for \(id)."
-        }
-    }
 }
-
 
 private struct StackShareSheet: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(WorkspaceRouter.self) private var router
 
+    let stackStore: StackStore
+
     var body: some View {
-        VStack(alignment: .leading, spacing: IterSpacing.gapMedium) {
+        let stack = stackStore.stack
+        let harnesses = stack.harnesses.map(\.code).joined(separator: ", ")
+        let skills = stack.skills.map(\.name).joined(separator: ", ")
+        let docs = stack.docs.map(\.value).joined(separator: ", ")
+
+        return VStack(alignment: .leading, spacing: IterSpacing.gapMedium) {
             HStack {
                 Text(verbatim: "Share stack")
                     .font(IterFont.sansKPIValue)
@@ -913,19 +922,31 @@ private struct StackShareSheet: View {
                 .accessibilityLabel("Close share stack")
             }
 
-            VStack(alignment: .leading, spacing: IterSpacing.gapSmall) {
-                StackShareRow(label: "Harnesses", value: "Codex, OpenCode")
-                StackShareRow(label: "Skills", value: "SwiftUI, launchd, redaction")
-                StackShareRow(label: "Docs", value: "ARCHITECTURE.md, DESIGN.md")
-            }
-
-            HStack {
-                Spacer()
-
-                ShareLink(item: "Iter stack: Codex, OpenCode, SwiftUI guidance") {
-                    Label("Share", systemImage: "square.and.arrow.up")
+            if harnesses.isEmpty && skills.isEmpty && docs.isEmpty {
+                Text(verbatim: "Your stack is empty. Add harnesses, skills, or docs first.")
+                    .font(IterFont.sansBody)
+                    .foregroundStyle(Color.iterTextSecondary(for: colorScheme))
+            } else {
+                VStack(alignment: .leading, spacing: IterSpacing.gapSmall) {
+                    if !harnesses.isEmpty {
+                        StackShareRow(label: "Harnesses", value: harnesses)
+                    }
+                    if !skills.isEmpty {
+                        StackShareRow(label: "Skills", value: skills)
+                    }
+                    if !docs.isEmpty {
+                        StackShareRow(label: "Docs", value: docs)
+                    }
                 }
-                .buttonStyle(.borderedProminent)
+
+                HStack {
+                    Spacer()
+
+                    ShareLink(item: "Iter stack: \(harnesses)") {
+                        Label("Share", systemImage: "square.and.arrow.up")
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
             }
         }
         .padding(IterSpacing.gapLarge)
@@ -967,14 +988,7 @@ private struct RightRailView: View {
         } else {
             VStack(alignment: .leading, spacing: IterSpacing.gapMedium) {
                 if route.matchesTopLevel(.me) {
-                    MeRailCards(dashboard: dashboard)
-                } else {
-                    RailCardView(title: "Refinements", count: "3", bodyText: "Prompt improvements you contributed.")
-                    RailCardView(
-                        title: route.title == "Team" ? "Active now" : "Suggestions waiting",
-                        count: route.title == "Team" ? "4" : "2",
-                        bodyText: "Contextual rail cards arrive in later data slices."
-                    )
+                    MeRailCards(dashboard: dashboard, stackStore: stackStore)
                 }
                 Spacer()
             }
@@ -990,52 +1004,32 @@ private struct RightRailView: View {
 
 private struct MeRailCards: View {
     let dashboard: DashboardMeResponse?
+    let stackStore: StackStore
 
     var body: some View {
-        RailCard(
-            title: "Refinements you contributed",
-            count: "\(max(1, dashboard?.recentSessions.filter { ($0.compositeScore ?? 0) >= 0.7 }.count ?? 0))",
-            items: [
-                RailItem(
-                    title: "Prompt context accepted",
-                    metadata: "last 30d · weighted into your score",
-                    primaryAction: nil,
-                    secondaryAction: nil
-                )
-            ]
-        )
+        let stack = stackStore.stack
+        let harnesses = stack.harnesses.map(\.code)
+        if !harnesses.isEmpty {
+            RailCard(
+                title: "Active stack",
+                count: "\(harnesses.count)",
+                items: [
+                    RailItem(
+                        title: harnesses.joined(separator: " · "),
+                        metadata: stackMetadata(skillsCount: stack.skills.count, docsCount: stack.docs.count),
+                        primaryAction: nil,
+                        secondaryAction: nil
+                    )
+                ]
+            )
+        }
+    }
 
-        RailCard(
-            title: "Suggestions waiting",
-            count: "2",
-            items: [
-                RailItem(
-                    title: "Attach stack notes to next prompt",
-                    metadata: "iter/mac · ready",
-                    primaryAction: "Copy to clipboard",
-                    secondaryAction: "Dismiss"
-                ),
-                RailItem(
-                    title: "Mention migration verifier",
-                    metadata: "api · queued",
-                    primaryAction: "Copy to clipboard",
-                    secondaryAction: nil
-                )
-            ]
-        )
-
-        RailCard(
-            title: "Active stack",
-            count: "4",
-            items: [
-                RailItem(
-                    title: "Codex · OpenCode · SwiftUI",
-                    metadata: "2 skills · docs pinned",
-                    primaryAction: nil,
-                    secondaryAction: nil
-                )
-            ]
-        )
+    private func stackMetadata(skillsCount: Int, docsCount: Int) -> String {
+        var parts: [String] = []
+        if skillsCount > 0 { parts.append("\(skillsCount) skill\(skillsCount == 1 ? "" : "s")") }
+        if docsCount > 0 { parts.append("\(docsCount) doc\(docsCount == 1 ? "" : "s")") }
+        return parts.joined(separator: " · ")
     }
 }
 
@@ -1177,6 +1171,7 @@ private struct DividerLine: View {
         .environment(ThemeStore())
         .environment(DaemonClient())
         .environment(WorkspaceRouter())
+        .environment(SessionStore())
         .preferredColorScheme(.light)
 }
 
@@ -1185,5 +1180,6 @@ private struct DividerLine: View {
         .environment(ThemeStore())
         .environment(DaemonClient())
         .environment(WorkspaceRouter())
+        .environment(SessionStore())
         .preferredColorScheme(.dark)
 }

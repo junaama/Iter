@@ -13,25 +13,19 @@ final class IterHTTPClient {
     private let session: URLSession
     private let baseURL: URL
     private let bearerToken: String?
+    private let sessionStore: SessionStore?
     private var dashboardMeCache: CacheEntry<DashboardMeResponse>?
 
     init(
         session: URLSession = .shared,
         baseURL: URL = IterHTTPClient.defaultBaseURL(),
-        bearerToken: String? = IterHTTPClient.defaultBearerToken()
+        bearerToken: String? = IterHTTPClient.defaultBearerToken(),
+        sessionStore: SessionStore? = nil
     ) {
         self.session = session
         self.baseURL = baseURL
         self.bearerToken = bearerToken
-    }
-
-    convenience init<SessionStoreType>(
-        sessionStore _: SessionStoreType,
-        session: URLSession = .shared,
-        baseURL: URL = IterHTTPClient.defaultBaseURL(),
-        bearerToken: String? = IterHTTPClient.defaultBearerToken()
-    ) {
-        self.init(session: session, baseURL: baseURL, bearerToken: bearerToken)
+        self.sessionStore = sessionStore
     }
 
     func dashboardMe(forceRefresh: Bool = false) async throws -> DashboardMeResponse {
@@ -52,6 +46,80 @@ final class IterHTTPClient {
         return response
     }
 
+    func data(
+        for request: URLRequest,
+        method: String? = nil,
+        body: Data? = nil
+    ) async throws -> (Data, HTTPURLResponse) {
+        var request = request
+        if let method {
+            request.httpMethod = method
+        }
+        if let body {
+            request.httpBody = body
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        }
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request = try await authorize(request)
+
+        let firstResponse = try await perform(request)
+        if firstResponse.1.statusCode != 401 || sessionStore == nil {
+            try validate(firstResponse)
+            return firstResponse
+        }
+
+        guard let sessionStore, await sessionStore.refreshIfNeeded(force: true) else {
+            throw IterHTTPClientError.sessionExpired
+        }
+
+        request = try await authorize(request)
+        let retryResponse = try await perform(request)
+        if retryResponse.1.statusCode == 401 {
+            await sessionStore.signOut(expired: true)
+            throw IterHTTPClientError.sessionExpired
+        }
+        try validate(retryResponse)
+        return retryResponse
+    }
+
+    private func authorize(_ request: URLRequest) async throws -> URLRequest {
+        var request = request
+        guard request.url?.path.hasPrefix("/v1/") == true else {
+            return request
+        }
+
+        let token: String?
+        if let sessionStore {
+            guard await sessionStore.refreshIfNeeded() else {
+                throw IterHTTPClientError.sessionExpired
+            }
+            token = await sessionStore.accessToken
+        } else {
+            token = bearerToken
+        }
+
+        if let token, !token.isEmpty {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        return request
+    }
+
+    private func perform(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        let (data, response) = try await session.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw IterHTTPClientError.invalidResponse
+        }
+        return (data, httpResponse)
+    }
+
+    private func validate(_ response: (Data, HTTPURLResponse)) throws {
+        guard (200..<300).contains(response.1.statusCode) else {
+            let message = Self.decodeErrorMessage(from: response.0)
+                ?? HTTPURLResponse.localizedString(forStatusCode: response.1.statusCode)
+            throw IterHTTPClientError.http(status: response.1.statusCode, message: message)
+        }
+    }
+
     private func get<Response: Decodable>(path: String, queryItems: [URLQueryItem] = []) async throws -> Response {
         let endpoint = baseURL.appendingPathComponent(path)
         guard var components = URLComponents(url: endpoint, resolvingAgainstBaseURL: false) else {
@@ -65,21 +133,7 @@ final class IterHTTPClient {
 
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        if let bearerToken, !bearerToken.isEmpty {
-            request.setValue("Bearer \(bearerToken)", forHTTPHeaderField: "Authorization")
-        }
-
-        let (data, response) = try await session.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw IterHTTPClientError.invalidResponse
-        }
-        guard (200..<300).contains(httpResponse.statusCode) else {
-            let message = Self.decodeErrorMessage(from: data)
-                ?? HTTPURLResponse.localizedString(forStatusCode: httpResponse.statusCode)
-            throw IterHTTPClientError.http(status: httpResponse.statusCode, message: message)
-        }
-
+        let (data, _) = try await data(for: request)
         do {
             return try Self.decoder.decode(Response.self, from: data)
         } catch {
@@ -136,6 +190,7 @@ enum IterHTTPClientError: LocalizedError {
     case invalidResponse
     case http(status: Int, message: String)
     case decode(String)
+    case sessionExpired
 
     var errorDescription: String? {
         switch self {
@@ -147,6 +202,8 @@ enum IterHTTPClientError: LocalizedError {
             return "Dashboard API returned \(status): \(message)"
         case .decode(let message):
             return "Dashboard API response could not be decoded: \(message)"
+        case .sessionExpired:
+            return "Session expired, sign in again."
         }
     }
 }

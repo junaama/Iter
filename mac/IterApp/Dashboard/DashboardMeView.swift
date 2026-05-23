@@ -20,10 +20,6 @@ struct DashboardMeView: View {
                     }
                 }
 
-                if let dashboard = store.dashboard, DashboardMeDisplay.isEmptyDashboard(dashboard) {
-                    FirstScoreEstimateView(hours: DashboardMeDisplay.firstScoreEstimateHours(dashboard))
-                }
-
                 RecentSessionsSection(
                     count: store.sessionCountLabel,
                     sessions: sessionItems,
@@ -50,10 +46,9 @@ struct DashboardMeView: View {
             return DashboardMeDisplay.kpiTiles(from: dashboard)
         }
         return [
-            KPITileData(label: "sessions", value: "--", unit: nil, delta: .flat("loading"), sparkline: []),
-            KPITileData(label: "acceptance %", value: "--", unit: "%", delta: .flat("loading"), sparkline: []),
-            KPITileData(label: "avg score", value: "--", unit: nil, delta: .flat("loading"), sparkline: []),
-            KPITileData(label: "time saved", value: "--", unit: "h", delta: .flat("loading"), sparkline: [])
+            KPITileData(label: "sessions", value: "--", unit: nil, delta: .flat(""), sparkline: []),
+            KPITileData(label: "acceptance %", value: "--", unit: "%", delta: .flat(""), sparkline: []),
+            KPITileData(label: "avg score", value: "--", unit: nil, delta: .flat(""), sparkline: [])
         ]
     }
 
@@ -63,10 +58,7 @@ struct DashboardMeView: View {
     }
 
     private var emptyMessage: String {
-        guard let dashboard = store.dashboard else {
-            return "First scored session estimated in 4 hours"
-        }
-        return "First scored session estimated in \(DashboardMeDisplay.firstScoreEstimateHours(dashboard)) hours"
+        "No sessions yet."
     }
 }
 
@@ -192,29 +184,3 @@ private struct DashboardInlineRetryBanner: View {
     }
 }
 
-private struct FirstScoreEstimateView: View {
-    @Environment(\.colorScheme) private var colorScheme
-
-    let hours: Int
-
-    var body: some View {
-        HStack(spacing: IterSpacing.gapSmall) {
-            Circle()
-                .fill(Color.iterWarn(for: colorScheme))
-                .frame(width: 7, height: 7)
-                .overlay {
-                    Circle()
-                        .stroke(Color.iterWarnSoft(for: colorScheme), lineWidth: 5)
-                }
-                .accessibilityHidden(true)
-
-            Text(verbatim: "First scored session estimated in \(hours) hours")
-                .font(IterFont.monoLabel)
-                .foregroundStyle(Color.iterTextSecondary(for: colorScheme))
-        }
-        .padding(.horizontal, IterSpacing.gapMedium)
-        .frame(height: 34)
-        .background(Color.iterSelected(for: colorScheme))
-        .clipShape(.rect(cornerRadius: IterRadius.card))
-    }
-}

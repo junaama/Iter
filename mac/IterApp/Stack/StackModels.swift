@@ -114,24 +114,14 @@ struct EditableStack: Equatable {
         docs.map(\.value).filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     }
 
-    static func detectedDraft() -> EditableStack {
+    static func empty() -> EditableStack {
         EditableStack(
             id: nil,
             userID: nil,
-            name: "My stack",
-            harnesses: [
-                StackHarness(code: HarnessID.codex.rawValue, source: .detected),
-                StackHarness(code: HarnessID.opencode.rawValue, source: .detected),
-                StackHarness(code: HarnessID.claudeCode.rawValue, source: .explicit)
-            ],
-            skills: [
-                StackSkill(name: "frontend-design", sourcePath: "~/.agents/skills/frontend-design"),
-                StackSkill(name: "golang-pro", sourcePath: "~/.agents/skills/golang-pro")
-            ],
-            docs: [
-                StackDocReference(value: "ARCHITECTURE.md"),
-                StackDocReference(value: "DESIGN.md")
-            ],
+            name: "",
+            harnesses: [],
+            skills: [],
+            docs: [],
             notes: "",
             classification: "clean",
             shareGrants: [],
