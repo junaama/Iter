@@ -1,4 +1,7 @@
 import Foundation
+import OSLog
+
+private let authLog = Logger(subsystem: "dev.iter.IterApp", category: "auth")
 
 struct DeviceAuthorization: Equatable {
     let deviceCode: String
@@ -94,7 +97,14 @@ struct WorkOSDeviceAuthClient {
 
     private func requestToken(fields: [String: String]) async throws -> WorkOSTokenResponse {
         let data = try await postForm(to: configuration.tokenURL, fields: fields)
-        let payload = try JSONDecoder().decode(TokenPayload.self, from: data)
+        let payload: TokenPayload
+        do {
+            payload = try JSONDecoder().decode(TokenPayload.self, from: data)
+        } catch {
+            let body = String(data: data, encoding: .utf8) ?? "<non-utf8 \(data.count) bytes>"
+            authLog.error("token decode failed: \(String(describing: error), privacy: .public) body=\(body, privacy: .public)")
+            throw error
+        }
         return WorkOSTokenResponse(
             accessToken: payload.accessToken,
             refreshToken: payload.refreshToken,

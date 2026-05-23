@@ -1,6 +1,9 @@
 import AppKit
 import Foundation
 import Observation
+import OSLog
+
+private let sessionLog = Logger(subsystem: "dev.iter.IterApp", category: "session")
 
 enum SessionStatus: Equatable {
     case loading
@@ -63,9 +66,11 @@ final class SessionStore {
                 self.deviceAuthorization = authorization
                 self.status = .polling
                 let tokens = try await authClient.pollForTokens(authorization)
+                sessionLog.info("pollForTokens succeeded; persisting tokens")
                 try self.persistAndApply(tokens)
                 self.deviceAuthorization = nil
             } catch {
+                sessionLog.error("sign-in failed at stage=\(String(describing: self.status), privacy: .public) error=\(String(describing: error), privacy: .public)")
                 self.lastError = error.localizedDescription
                 self.status = .failed(error.localizedDescription)
             }

@@ -244,12 +244,13 @@ struct DashboardAPIConfig {
             ?? defaults.string(forKey: "iter.apiBaseURL")
             ?? "https://staging.iter.dev"
         let url = URL(string: rawBaseURL) ?? URL(string: "https://staging.iter.dev")!
-        return DashboardAPIConfig(
-            baseURL: url,
-            token: env["ITER_AUTH_TOKEN"]
-                ?? env["ITER_API_TOKEN"]
-                ?? defaults.string(forKey: "iter.authToken")
-        )
+        let token = env["ITER_AUTH_TOKEN"]
+            ?? env["ITER_API_TOKEN"]
+            ?? defaults.string(forKey: "iter.authToken")
+            // Fall back to the Keychain — that's where SessionStore persists
+            // the WorkOS access token after device-code sign-in.
+            ?? (try? TokenKeychainStore().load()?.accessToken)
+        return DashboardAPIConfig(baseURL: url, token: token)
     }
 }
 

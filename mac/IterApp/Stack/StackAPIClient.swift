@@ -207,7 +207,15 @@ struct StackAPIClient {
     }
 
     static func defaultToken() -> String? {
-        ProcessInfo.processInfo.environment["ITER_AUTH_TOKEN"] ??
-            UserDefaults.standard.string(forKey: "iter.authToken")
+        if let env = ProcessInfo.processInfo.environment["ITER_AUTH_TOKEN"], !env.isEmpty {
+            return env
+        }
+        if let stored = UserDefaults.standard.string(forKey: "iter.authToken"), !stored.isEmpty {
+            return stored
+        }
+        // Fall back to the Keychain — that's where SessionStore persists
+        // the WorkOS access token after device-code sign-in. Without this
+        // every Stack request goes out without an Authorization header.
+        return try? TokenKeychainStore().load()?.accessToken
     }
 }
