@@ -653,6 +653,54 @@ private extension View {
     }
 }
 
+private struct StatusPillView: View {
+    @Environment(\.colorScheme) private var colorScheme
+
+    let label: String
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Circle()
+                .fill(Color.iterGood(for: colorScheme))
+                .frame(width: 6, height: 6)
+                .accessibilityHidden(true)
+
+            Text(verbatim: label)
+                .font(IterFont.monoLabel)
+                .foregroundStyle(Color.iterTextSecondary(for: colorScheme))
+        }
+        .padding(.horizontal, 8)
+        .frame(height: 26)
+        .background(Color.iterPanel(for: colorScheme))
+        .clipShape(.rect(cornerRadius: IterRadius.pill))
+        .overlay {
+            RoundedRectangle(cornerRadius: IterRadius.pill)
+                .stroke(Color.iterBorder(for: colorScheme), lineWidth: 1)
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
+private struct DividerLine: View {
+    @Environment(\.colorScheme) private var colorScheme
+
+    enum Axis {
+        case horizontal
+        case vertical
+    }
+
+    var axis: Axis = .horizontal
+
+    var body: some View {
+        Rectangle()
+            .fill(Color.iterBorder(for: colorScheme))
+            .frame(
+                width: axis == .vertical ? 1 : nil,
+                height: axis == .horizontal ? 1 : nil
+            )
+    }
+}
+
 #Preview("Stack Me") {
     HStack(spacing: 0) {
         StackMeView(store: StackStore())

@@ -137,7 +137,7 @@ private struct RecentSessionsSection: View {
             return [(day: "Today", sessions: [])]
         }
 
-        sessions.reduce(into: [(day: String, sessions: [SessionListItem])]()) { groups, session in
+        return sessions.reduce(into: [(day: String, sessions: [SessionListItem])]()) { groups, session in
             let day = feedDay(for: session)
             if let index = groups.firstIndex(where: { $0.day == day }) {
                 groups[index].sessions.append(session)
