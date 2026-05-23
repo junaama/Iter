@@ -199,6 +199,60 @@ func (v *Verifier) keys(ctx context.Context) (jwk.Set, error) {
 	return set, nil
 }
 
+// VerifyRaw parses + signature-verifies a WorkOS-issued JWT and returns
+// the underlying jwt.Token. Unlike Verify, it does NOT require the
+// `sub` or `tenant_id` claims to be Postgres UUIDs — WorkOS access
+// tokens carry `sub = "user_01KS..."` (a prefixed WorkOS id) and no
+// tenant_id at all. Used by the token-exchange handler at
+// POST /v1/auth/session.
+//
+// The returned token still has issuer / exp / nbf / signature checks
+// applied; only the iter-specific claim shape is skipped. Callers must
+// not pass the resulting token to extractPrincipal — fish out the
+// WorkOS sub via tok.Subject() and look up (or mint) the Iter user
+// row keyed by that opaque string.
+func (v *Verifier) VerifyRaw(ctx context.Context, raw string) (jwt.Token, error) {
+	if raw == "" {
+		return nil, ErrMalformed
+	}
+	msg, err := jws.Parse([]byte(raw))
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrMalformed, err)
+	}
+	sigs := msg.Signatures()
+	if len(sigs) == 0 {
+		return nil, ErrMalformed
+	}
+	kid := sigs[0].ProtectedHeaders().KeyID()
+
+	set, err := v.keys(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if kid != "" {
+		if _, ok := set.LookupKeyID(kid); !ok {
+			if rerr := v.refresh(ctx); rerr == nil {
+				set, _ = v.snapshot()
+			}
+		}
+	}
+
+	opts := []jwt.ParseOption{
+		jwt.WithKeySet(set),
+		jwt.WithIssuer(v.cfg.Issuer),
+		jwt.WithAcceptableSkew(v.cfg.Leeway),
+		jwt.WithClock(jwtClock{now: v.cfg.Now}),
+	}
+	if v.cfg.Audience != "" {
+		opts = append(opts, jwt.WithAudience(v.cfg.Audience))
+	}
+	tok, err := jwt.Parse([]byte(raw), opts...)
+	if err != nil {
+		return nil, classifyJWTError(err)
+	}
+	return tok, nil
+}
+
 // Verify parses, validates, and extracts claims from a WorkOS-issued JWT.
 //
 // On success it returns a fully-populated contracts.Principal. On failure it

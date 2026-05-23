@@ -83,11 +83,12 @@ func WithLogger(logger *slog.Logger) AuthOption {
 	}
 }
 
-// tokenVerifier is the subset of *auth.Verifier the middleware actually
+// tokenVerifier is the subset of auth verifiers the middleware actually
 // uses. Pulling it out as an unexported interface lets the test file
 // inject canned Principals / errors without standing up a real JWKS
-// server. *auth.Verifier satisfies this interface by virtue of having a
-// matching Verify method; no adapter is needed.
+// server. Both *auth.Verifier (WorkOS RS256) and *auth.IterVerifier
+// (Iter HS256) satisfy it by virtue of having a matching Verify
+// method; no adapter is needed.
 type tokenVerifier interface {
 	Verify(ctx context.Context, raw string) (contracts.Principal, error)
 }
@@ -118,15 +119,31 @@ type tokenVerifier interface {
 // Security event logging: every Verify failure logs at Warn level with
 // the sentinel error name, request path, and method. We deliberately do
 // NOT log the raw token — even a denied token is bearer credentials.
-func Auth(v *auth.Verifier, opts ...AuthOption) Mw {
-	// A nil *auth.Verifier must remain nil when handed to the inner
-	// implementation: passing it as tokenVerifier would create a typed-
-	// nil interface that is != nil at the comparison site. The explicit
-	// branch keeps the boot-without-WorkOS path working.
-	if v == nil {
+func Auth(v auth.TokenVerifier, opts ...AuthOption) Mw {
+	// A nil *auth.Verifier / *auth.IterVerifier must remain nil when
+	// handed to the inner implementation: passing it as tokenVerifier
+	// would create a typed-nil interface that is != nil at the
+	// comparison site. The explicit branch keeps the boot-without-
+	// WorkOS / boot-without-ITER_JWT_SECRET path working.
+	if v == nil || isNilVerifier(v) {
 		return authMiddleware(nil, opts...)
 	}
 	return authMiddleware(v, opts...)
+}
+
+// isNilVerifier checks for a typed-nil concrete verifier hiding behind
+// the TokenVerifier interface. cmd/server constructs the verifier
+// pointer first and then assigns into deps.Auth (interface-typed), so a
+// nil concrete pointer becomes a non-nil interface — the boot-without-
+// secret path must still be recognized.
+func isNilVerifier(v auth.TokenVerifier) bool {
+	switch t := v.(type) {
+	case *auth.Verifier:
+		return t == nil
+	case *auth.IterVerifier:
+		return t == nil
+	}
+	return false
 }
 
 // authMiddleware is the interface-typed implementation. Exported Auth

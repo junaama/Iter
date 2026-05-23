@@ -84,12 +84,32 @@ type Deps struct {
 	// logs a warning at boot when REDIS_URL is unset.
 	Redis *goredis.Client
 
-	// Auth is the WorkOS JWT verifier (issue 056) consumed by the auth
-	// middleware (issue 031). May be nil in non-prod boots when the
-	// WORKOS_* env vars are unset; the middleware nil-checks and
-	// returns 503 auth_unavailable on every non-whitelisted request so
-	// early-bring-up is loud rather than silently-unauthenticated.
-	Auth *auth.Verifier
+	// Auth is the JWT verifier consumed by the auth middleware
+	// (issue 031). In the WorkOS device-code path it's an
+	// *auth.IterVerifier (HS256, our own minted session tokens — see
+	// internal/auth/itertoken.go); in legacy callers it could be an
+	// *auth.Verifier (WorkOS RS256 / JWKS). May be nil in non-prod
+	// boots when the relevant env vars are unset; the middleware
+	// nil-checks and returns 503 auth_unavailable on every
+	// non-whitelisted request so early-bring-up is loud rather than
+	// silently-unauthenticated.
+	Auth auth.TokenVerifier
+
+	// WorkOSVerifier is the RS256/JWKS verifier used SOLELY by the
+	// POST /v1/auth/session token-exchange handler. It validates the
+	// WorkOS access token the Mac app (and CLI) presents during
+	// sign-in and is not wired into the request-path middleware.
+	// Nil when WORKOS_JWKS_URL / WORKOS_ISSUER are unset — in that
+	// case the exchange endpoint returns 503 and clients cannot
+	// sign in until the env is fixed.
+	WorkOSVerifier *auth.Verifier
+
+	// IterSigner mints Iter-issued session JWTs after a successful
+	// WorkOS token exchange (POST /v1/auth/session). Same secret as
+	// the *auth.IterVerifier in Auth above; v1 keeps them in one
+	// process. Nil when ITER_JWT_SECRET is unset, which also fails
+	// the boot path loudly via cmd/server (matching DATABASE_URL).
+	IterSigner *auth.IterSigner
 
 	// WS is the WebSocket gateway (issue 043) registered on GET /v1/ws.
 	// The gateway authenticates inside ServeHTTP (NOT via the HTTP
