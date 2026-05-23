@@ -15,7 +15,7 @@ struct SessionTable: View {
 
             if isLoading {
                 ForEach(0..<8, id: \.self) { _ in
-                    SessionTableSkeletonRow()
+                    SessionTableSkeletonRow(showsAuthorColumn: showsAuthorColumn)
                 }
             } else if sessions.isEmpty {
                 emptyRow
@@ -36,16 +36,32 @@ struct SessionTable: View {
     }
 
     private var header: some View {
-        Grid(horizontalSpacing: 10, verticalSpacing: 0) {
-            GridRow {
-                ForEach(headers, id: \.self) {
-                    Text(verbatim: $0)
-                        .font(IterFont.monoSmall)
-                        .foregroundStyle(Color.iterTextTertiary(for: colorScheme))
-                        .textCase(.uppercase)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
+        HStack(spacing: SessionTableColumns.spacing) {
+            headerText("Started")
+                .frame(width: SessionTableColumns.started, alignment: .leading)
+
+            if showsAuthorColumn {
+                headerText("Author")
+                    .frame(width: SessionTableColumns.author, alignment: .leading)
             }
+
+            headerText("Repo·Task")
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            headerText("Harness")
+                .frame(width: SessionTableColumns.harness, alignment: .leading)
+
+            headerText("Dur")
+                .frame(width: SessionTableColumns.duration, alignment: .leading)
+
+            headerText("Score")
+                .frame(width: SessionTableColumns.score, alignment: .leading)
+
+            headerText("Status")
+                .frame(width: SessionTableColumns.status, alignment: .leading)
+
+            headerText("Accepted")
+                .frame(width: SessionTableColumns.accepted, alignment: .leading)
         }
         .padding(.horizontal, 12)
         .frame(height: IterSpacing.rowHeight)
@@ -64,10 +80,12 @@ struct SessionTable: View {
             .frame(maxWidth: .infinity, minHeight: IterSpacing.rowHeight)
     }
 
-    private var headers: [String] {
-        showsAuthorColumn
-            ? ["Started", "Author", "Repo·Task", "Harness", "Dur", "Score", "Status", "Accepted"]
-            : ["Started", "Repo·Task", "Harness", "Dur", "Score", "Status", "Accepted"]
+    private func headerText(_ value: String) -> some View {
+        Text(verbatim: value)
+            .font(IterFont.monoSmall)
+            .foregroundStyle(Color.iterTextTertiary(for: colorScheme))
+            .textCase(.uppercase)
+            .lineLimit(1)
     }
 }
 
@@ -80,45 +98,60 @@ private struct SessionTableRow: View {
 
     var body: some View {
         Button(action: onSelect) {
-            Grid(horizontalSpacing: 10, verticalSpacing: 0) {
-                GridRow {
-                    Text(verbatim: session.when)
-                        .font(IterFont.monoLabel)
-                        .foregroundStyle(Color.iterTextSecondary(for: colorScheme))
+            HStack(spacing: SessionTableColumns.spacing) {
+                Text(verbatim: session.when)
+                    .font(IterFont.monoLabel)
+                    .foregroundStyle(Color.iterTextSecondary(for: colorScheme))
+                    .lineLimit(1)
+                    .frame(width: SessionTableColumns.started, alignment: .leading)
 
-                    if showsAuthorColumn {
-                        HStack(spacing: 6) {
-                            Avatar(initials: session.authorInitials, seed: session.avatarSeed)
-                            Text(verbatim: session.authorInitials)
-                                .font(IterFont.monoLabel)
-                                .foregroundStyle(Color.iterTextSecondary(for: colorScheme))
-                        }
-                    }
-
-                    VStack(alignment: .leading, spacing: 0) {
-                        Text(verbatim: session.repo)
+                if showsAuthorColumn {
+                    HStack(spacing: 6) {
+                        Avatar(initials: session.authorInitials, seed: session.avatarSeed)
+                        Text(verbatim: session.authorInitials)
                             .font(IterFont.monoLabel)
                             .foregroundStyle(Color.iterTextSecondary(for: colorScheme))
-                        Text(verbatim: session.task)
-                            .font(IterFont.sansSmall)
-                            .foregroundStyle(Color.iterTextPrimary(for: colorScheme))
                             .lineLimit(1)
                     }
-
-                    Harness(id: session.harness)
-
-                    Text(verbatim: session.duration)
-                        .font(IterFont.monoLabel)
-                        .foregroundStyle(Color.iterTextSecondary(for: colorScheme))
-
-                    Score(value: session.score)
-
-                    StatusChip(status: session.status)
-
-                    Text(verbatim: session.accepted)
-                        .font(IterFont.monoLabel)
-                        .foregroundStyle(Color.iterTextSecondary(for: colorScheme))
+                    .frame(width: SessionTableColumns.author, alignment: .leading)
                 }
+
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(verbatim: session.repo)
+                        .font(IterFont.monoLabel)
+                        .foregroundStyle(Color.iterTextSecondary(for: colorScheme))
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                    Text(verbatim: session.task)
+                        .font(IterFont.sansSmall)
+                        .foregroundStyle(Color.iterTextPrimary(for: colorScheme))
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .clipped()
+                .layoutPriority(1)
+
+                Harness(id: session.harness)
+                    .frame(width: SessionTableColumns.harness, alignment: .leading)
+
+                Text(verbatim: session.duration)
+                    .font(IterFont.monoLabel)
+                    .foregroundStyle(Color.iterTextSecondary(for: colorScheme))
+                    .lineLimit(1)
+                    .frame(width: SessionTableColumns.duration, alignment: .leading)
+
+                Score(value: session.score)
+                    .frame(width: SessionTableColumns.score, alignment: .leading)
+
+                StatusChip(status: session.status)
+                    .frame(width: SessionTableColumns.status, alignment: .leading)
+
+                Text(verbatim: session.accepted)
+                    .font(IterFont.monoLabel)
+                    .foregroundStyle(Color.iterTextSecondary(for: colorScheme))
+                    .lineLimit(1)
+                    .frame(width: SessionTableColumns.accepted, alignment: .leading)
             }
             .padding(.horizontal, 12)
             .frame(height: IterSpacing.rowHeight)
@@ -137,16 +170,35 @@ private struct SessionTableRow: View {
 private struct SessionTableSkeletonRow: View {
     @Environment(\.colorScheme) private var colorScheme
 
+    let showsAuthorColumn: Bool
+
     var body: some View {
-        Grid(horizontalSpacing: 10, verticalSpacing: 0) {
-            GridRow {
-                ForEach([44, 132, 58, 36, 34, 58, 46], id: \.self) { width in
-                    RoundedRectangle(cornerRadius: 3)
-                        .fill(Color.iterSelected(for: colorScheme))
-                        .frame(width: CGFloat(width), height: 10)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
+        HStack(spacing: SessionTableColumns.spacing) {
+            skeletonBar(width: 44)
+                .frame(width: SessionTableColumns.started, alignment: .leading)
+
+            if showsAuthorColumn {
+                skeletonBar(width: 34)
+                    .frame(width: SessionTableColumns.author, alignment: .leading)
             }
+
+            skeletonBar(width: 132)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            skeletonBar(width: 42)
+                .frame(width: SessionTableColumns.harness, alignment: .leading)
+
+            skeletonBar(width: 28)
+                .frame(width: SessionTableColumns.duration, alignment: .leading)
+
+            skeletonBar(width: 30)
+                .frame(width: SessionTableColumns.score, alignment: .leading)
+
+            skeletonBar(width: 54)
+                .frame(width: SessionTableColumns.status, alignment: .leading)
+
+            skeletonBar(width: 28)
+                .frame(width: SessionTableColumns.accepted, alignment: .leading)
         }
         .padding(.horizontal, 12)
         .frame(height: IterSpacing.rowHeight)
@@ -157,6 +209,23 @@ private struct SessionTableSkeletonRow: View {
         }
         .accessibilityHidden(true)
     }
+
+    private func skeletonBar(width: CGFloat) -> some View {
+        RoundedRectangle(cornerRadius: 3)
+            .fill(Color.iterSelected(for: colorScheme))
+            .frame(width: width, height: 10)
+    }
+}
+
+private enum SessionTableColumns {
+    static let spacing: CGFloat = 10
+    static let started: CGFloat = 86
+    static let author: CGFloat = 72
+    static let harness: CGFloat = 70
+    static let duration: CGFloat = 44
+    static let score: CGFloat = 56
+    static let status: CGFloat = 82
+    static let accepted: CGFloat = 66
 }
 
 #Preview("Session Table States") {

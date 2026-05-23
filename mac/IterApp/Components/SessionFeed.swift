@@ -7,7 +7,7 @@ struct SessionFeed: View {
     var onSelect: (SessionListItem) -> Void = { _ in }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
+        LazyVStack(alignment: .leading, spacing: 2) {
             ForEach(Array(groups.enumerated()), id: \.offset) { _, group in
                 Text(verbatim: group.day)
                     .font(IterFont.monoSmall)
@@ -38,39 +38,49 @@ private struct SessionFeedRow: View {
 
     var body: some View {
         Button(action: onSelect) {
-            Grid(horizontalSpacing: 12, verticalSpacing: 0) {
-                GridRow(alignment: .top) {
-                    Text(verbatim: session.when)
-                        .font(IterFont.monoLabel)
-                        .foregroundStyle(Color.iterTextTertiary(for: colorScheme))
-                        .frame(width: 58, alignment: .leading)
+            HStack(alignment: .top, spacing: 12) {
+                Text(verbatim: session.when)
+                    .font(IterFont.monoLabel)
+                    .foregroundStyle(Color.iterTextTertiary(for: colorScheme))
+                    .lineLimit(1)
+                    .frame(width: 58, alignment: .leading)
 
-                    Avatar(initials: session.authorInitials, seed: session.avatarSeed)
+                Avatar(initials: session.authorInitials, seed: session.avatarSeed)
 
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack(spacing: IterSpacing.gapSmall) {
-                            Text(verbatim: session.task)
-                                .font(IterFont.sans(size: 12.5, weight: .medium))
-                                .foregroundStyle(Color.iterTextPrimary(for: colorScheme))
-                            Text(verbatim: session.repo)
-                                .font(IterFont.monoLabel)
-                                .foregroundStyle(Color.iterTextSecondary(for: colorScheme))
-                        }
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: IterSpacing.gapSmall) {
+                        Text(verbatim: session.task)
+                            .font(IterFont.sans(size: 12.5, weight: .medium))
+                            .foregroundStyle(Color.iterTextPrimary(for: colorScheme))
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                            .layoutPriority(1)
 
-                        HStack(spacing: 10) {
-                            Harness(id: session.harness)
-                            Text(verbatim: session.duration)
-                            Text(verbatim: session.tools)
-                        }
-                        .font(IterFont.monoLabel)
-                        .foregroundStyle(Color.iterTextTertiary(for: colorScheme))
+                        Text(verbatim: session.repo)
+                            .font(IterFont.monoLabel)
+                            .foregroundStyle(Color.iterTextSecondary(for: colorScheme))
+                            .lineLimit(1)
+                            .truncationMode(.middle)
                     }
 
-                    VStack(alignment: .trailing, spacing: 4) {
-                        Score(value: session.score)
-                        StatusChip(status: session.status)
+                    HStack(spacing: 10) {
+                        Harness(id: session.harness)
+                        Text(verbatim: session.duration)
+                            .lineLimit(1)
+                        Text(verbatim: session.tools)
+                            .lineLimit(1)
                     }
+                    .font(IterFont.monoLabel)
+                    .foregroundStyle(Color.iterTextTertiary(for: colorScheme))
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .clipped()
+
+                VStack(alignment: .trailing, spacing: 4) {
+                    Score(value: session.score)
+                    StatusChip(status: session.status)
+                }
+                .frame(width: 76, alignment: .trailing)
             }
             .padding(8)
             .contentShape(.rect)

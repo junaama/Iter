@@ -187,7 +187,13 @@ enum DashboardMeDisplay {
     private static func taskTitle(from prompt: String) -> String {
         let trimmed = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return "Captured coding session" }
-        return trimmed
+        return conciseTitle(from: trimmed)
+    }
+
+    private static func conciseTitle(from value: String) -> String {
+        let firstLine = value.split(whereSeparator: \.isNewline).first.map(String.init) ?? value
+        if firstLine.count <= 160 { return firstLine }
+        return String(firstLine.prefix(157)) + "..."
     }
 
     private static func initials(from displayName: String) -> String {

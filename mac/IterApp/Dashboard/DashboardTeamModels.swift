@@ -224,7 +224,7 @@ enum DashboardTeamDisplay {
     }
 
     private static func taskTitle(from prompt: String) -> String {
-        trimmed(prompt, fallback: "Captured coding session")
+        conciseTitle(from: trimmed(prompt, fallback: "Captured coding session"))
     }
 
     private static func initials(from displayName: String) -> String {
@@ -274,6 +274,12 @@ enum DashboardTeamDisplay {
     private static func trimmed(_ value: String, fallback: String) -> String {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? fallback : trimmed
+    }
+
+    private static func conciseTitle(from value: String) -> String {
+        let firstLine = value.split(whereSeparator: \.isNewline).first.map(String.init) ?? value
+        if firstLine.count <= 160 { return firstLine }
+        return String(firstLine.prefix(157)) + "..."
     }
 
     private static let timeFormatter: DateFormatter = {
