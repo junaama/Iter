@@ -285,6 +285,15 @@ func TestStackEndpoints_HappyPathShareUnshareAndAudit(t *testing.T) {
 		t.Fatalf("share replay missing X-Idempotent-Replay")
 	}
 
+	resp, body = doStackRequest(t, f, http.MethodGet, "/v1/stack/me", tokenA, "", nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /me after share status = %d body=%s", resp.StatusCode, body)
+	}
+	own = decodeJSON[[]contracts.StackResponse](t, body)
+	if len(own) != 1 || len(own[0].Shares) != 1 || own[0].Shares[0].SharedWithUserID != userB {
+		t.Fatalf("GET /me share grants = %+v", own)
+	}
+
 	resp, body = doStackRequest(t, f, http.MethodGet, "/v1/stack/"+userA.String(), tokenB, "", nil)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("GET shared after share status = %d body=%s", resp.StatusCode, body)
@@ -319,6 +328,59 @@ func TestStackEndpoints_HappyPathShareUnshareAndAudit(t *testing.T) {
 		if ev.ActorUserID != userA.String() || ev.TargetID != created.ID.String() || ev.SharedWithUserID != userB.String() {
 			t.Fatalf("bad audit payload: %+v", ev)
 		}
+	}
+}
+
+func TestStackUpsertUpdatesExistingCallerStack(t *testing.T) {
+	f := newStackAPIFixture(t)
+	ctx := context.Background()
+	tenantID, userID := seedTenantUser(t, f, ctx, "upsert")
+	token := f.auth.token(t, tenantID, userID)
+
+	initialBody := map[string]any{
+		"name":      "Initial stack",
+		"harnesses": []string{"codex"},
+		"skills":    []string{"golang-pro"},
+		"docs":      []string{"https://go.dev/doc/"},
+	}
+	resp, body := doStackRequest(t, f, http.MethodPost, "/v1/stack", token, "upsert-create", initialBody)
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("create status = %d body=%s", resp.StatusCode, body)
+	}
+	created := decodeJSON[contracts.StackResponse](t, body)
+
+	updatedBody := map[string]any{
+		"name":      "Updated stack",
+		"harnesses": []string{"codex", "opencode"},
+		"skills":    []string{"golang-pro", "swiftui"},
+		"docs":      []string{"https://go.dev/doc/", "docs/stack.md"},
+		"notes":     "Prefer focused feedback loops.",
+	}
+	resp, body = doStackRequest(t, f, http.MethodPost, "/v1/stack", token, "upsert-update", updatedBody)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("upsert status = %d body=%s", resp.StatusCode, body)
+	}
+	updated := decodeJSON[contracts.StackResponse](t, body)
+	if updated.ID != created.ID {
+		t.Fatalf("upsert changed stack id: %s -> %s", created.ID, updated.ID)
+	}
+	if updated.Payload.Name != "Updated stack" || len(updated.Payload.Harnesses) != 2 {
+		t.Fatalf("upsert payload mismatch: %+v", updated.Payload)
+	}
+	if updated.Payload.Notes == nil || *updated.Payload.Notes != "Prefer focused feedback loops." {
+		t.Fatalf("upsert notes mismatch: %+v", updated.Payload.Notes)
+	}
+	if countStacks(t, f.tdb.Super, tenantID) != 1 {
+		t.Fatalf("upsert inserted duplicate stack")
+	}
+
+	resp, body = doStackRequest(t, f, http.MethodGet, "/v1/stack/me", token, "", nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /me status = %d body=%s", resp.StatusCode, body)
+	}
+	own := decodeJSON[[]contracts.StackResponse](t, body)
+	if len(own) != 1 || own[0].Payload.Name != "Updated stack" {
+		t.Fatalf("GET /me after upsert = %+v", own)
 	}
 }
 
@@ -370,6 +432,30 @@ func TestStackCreate_EnvVarHeuristicReturns422(t *testing.T) {
 	}
 }
 
+func TestStackCreate_SecretShapedDocReturns422(t *testing.T) {
+	f := newStackAPIFixture(t)
+	ctx := context.Background()
+	tenantID, userID := seedTenantUser(t, f, ctx, "secret-doc")
+	token := f.auth.token(t, tenantID, userID)
+
+	body := map[string]any{
+		"name":      "Secret doc stack",
+		"harnesses": []string{"codex"},
+		"docs":      []string{"./.env.local"},
+	}
+	resp, respBody := doStackRequest(t, f, http.MethodPost, "/v1/stack", token, "secret-doc-stack", body)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d body=%s", resp.StatusCode, respBody)
+	}
+	got := decodeJSON[map[string]string](t, respBody)
+	if got["error"] != "raw_config_forbidden" {
+		t.Fatalf("body = %v", got)
+	}
+	if countStacks(t, f.tdb.Super, tenantID) != 0 {
+		t.Fatalf("secret-shaped doc stack was persisted")
+	}
+}
+
 func TestStackShare_CrossTenantTargetReturns422(t *testing.T) {
 	f := newStackAPIFixture(t)
 	ctx := context.Background()
@@ -386,6 +472,60 @@ func TestStackShare_CrossTenantTargetReturns422(t *testing.T) {
 	got := decodeJSON[map[string]string](t, respBody)
 	if got["error"] != "cross_tenant_share_forbidden" {
 		t.Fatalf("body = %v", got)
+	}
+}
+
+func TestStackShare_IncludedDocsMustBeSafeSubset(t *testing.T) {
+	f := newStackAPIFixture(t)
+	ctx := context.Background()
+	tenantID, userA := seedTenantUser(t, f, ctx, "share-docs-a")
+	userB := seedUserInTenant(t, f, ctx, tenantID, "share-docs-b")
+	tokenA := f.auth.token(t, tenantID, userA)
+
+	createBody := map[string]any{
+		"name":      "Share docs stack",
+		"harnesses": []string{"codex"},
+		"docs":      []string{"docs/stack.md", "https://go.dev/doc/"},
+	}
+	resp, body := doStackRequest(t, f, http.MethodPost, "/v1/stack", tokenA, "share-docs-create", createBody)
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("create status = %d body=%s", resp.StatusCode, body)
+	}
+	stackID := decodeJSON[contracts.StackResponse](t, body).ID
+
+	shareBody := map[string]any{
+		"shared_with_user_id": userB.String(),
+		"included_docs":       []string{"docs/stack.md"},
+	}
+	resp, body = doStackRequest(t, f, http.MethodPost, "/v1/stack/"+stackID.String()+"/share", tokenA, "share-docs-ok", shareBody)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("share status = %d body=%s", resp.StatusCode, body)
+	}
+
+	badBody := map[string]any{
+		"shared_with_user_id": userB.String(),
+		"included_docs":       []string{"./.env.local"},
+	}
+	resp, body = doStackRequest(t, f, http.MethodPost, "/v1/stack/"+stackID.String()+"/share", tokenA, "share-docs-secret", badBody)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("secret doc share status = %d body=%s", resp.StatusCode, body)
+	}
+	got := decodeJSON[map[string]string](t, body)
+	if got["error"] != "raw_config_forbidden" {
+		t.Fatalf("secret doc share body = %v", got)
+	}
+
+	outOfStackBody := map[string]any{
+		"shared_with_user_id": userB.String(),
+		"included_docs":       []string{"docs/not-in-stack.md"},
+	}
+	resp, body = doStackRequest(t, f, http.MethodPost, "/v1/stack/"+stackID.String()+"/share", tokenA, "share-docs-subset", outOfStackBody)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("out-of-stack doc share status = %d body=%s", resp.StatusCode, body)
+	}
+	got = decodeJSON[map[string]string](t, body)
+	if got["error"] != "invalid_stack_share" {
+		t.Fatalf("out-of-stack doc share body = %v", got)
 	}
 }
 

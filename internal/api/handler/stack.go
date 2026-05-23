@@ -2,13 +2,16 @@ package handler
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
+	"path"
 	"regexp"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -73,7 +76,12 @@ func (h stackHandler) me(w http.ResponseWriter, r *http.Request) {
 		h.serverError(w, r, "stack_list_me_failed", err)
 		return
 	}
-	writeStackJSON(w, http.StatusOK, stackResponses(stacks))
+	responses, err := stackResponsesWithShares(r.Context(), tx, stacks)
+	if err != nil {
+		h.serverError(w, r, "stack_list_me_shares_failed", err)
+		return
+	}
+	writeStackJSON(w, http.StatusOK, responses)
 }
 
 func (h stackHandler) user(w http.ResponseWriter, r *http.Request) {
@@ -139,6 +147,10 @@ func (h stackHandler) create(w http.ResponseWriter, r *http.Request) {
 		writeStackError(w, http.StatusUnprocessableEntity, "raw_config_forbidden")
 		return
 	}
+	if containsForbiddenStackDocPath(original.Docs) {
+		writeStackError(w, http.StatusUnprocessableEntity, "raw_config_forbidden")
+		return
+	}
 
 	var req contracts.StackUpsertRequest
 	if err := decodeStrict(safePayload, &req); err != nil {
@@ -148,6 +160,36 @@ func (h stackHandler) create(w http.ResponseWriter, r *http.Request) {
 	payload := stackPayload(req)
 	if err := validateStackPayload(payload); err != nil {
 		writeStackError(w, http.StatusUnprocessableEntity, "invalid_stack")
+		return
+	}
+	if containsForbiddenStackDocPath(payload.Docs) {
+		writeStackError(w, http.StatusUnprocessableEntity, "raw_config_forbidden")
+		return
+	}
+
+	existing, err := repo.ListByUser(r.Context(), tx, principal.UserID)
+	if err != nil {
+		h.serverError(w, r, "stack_list_for_upsert_failed", err)
+		return
+	}
+	if len(existing) > 0 {
+		current := existing[0]
+		current.Name = payload.Name
+		current.Harnesses = payload.Harnesses
+		current.Skills = payload.Skills
+		current.Docs = payload.Docs
+		current.Notes = payload.Notes
+		current.Classification = tier.String()
+		if err := repo.UpdateStack(r.Context(), tx, current); err != nil {
+			h.serverError(w, r, "stack_update_failed", err)
+			return
+		}
+		updated, err := repo.GetStack(r.Context(), tx, current.ID)
+		if err != nil {
+			h.serverError(w, r, "stack_get_after_update_failed", err)
+			return
+		}
+		writeStackJSON(w, http.StatusOK, stackResponse(updated))
 		return
 	}
 
@@ -204,6 +246,14 @@ func (h stackHandler) share(w http.ResponseWriter, r *http.Request) {
 	}
 	if stack.UserID != principal.UserID {
 		writeStackError(w, http.StatusNotFound, "not_found")
+		return
+	}
+	if containsForbiddenStackDocPath(req.IncludedDocs) {
+		writeStackError(w, http.StatusUnprocessableEntity, "raw_config_forbidden")
+		return
+	}
+	if !docsSubset(req.IncludedDocs, stack.Docs) {
+		writeStackError(w, http.StatusUnprocessableEntity, "invalid_stack_share")
 		return
 	}
 
@@ -386,6 +436,40 @@ func containsEnvAssignment(p contracts.StackPayload) bool {
 	return false
 }
 
+func containsForbiddenStackDocPath(docs []string) bool {
+	for _, doc := range docs {
+		if isForbiddenStackDocPath(doc) {
+			return true
+		}
+	}
+	return false
+}
+
+func isForbiddenStackDocPath(value string) bool {
+	ref := strings.TrimRight(strings.ToLower(strings.TrimSpace(value)), "/")
+	if ref == "" {
+		return false
+	}
+	base := path.Base(ref)
+	return strings.HasPrefix(base, ".env") ||
+		strings.HasSuffix(base, ".key") ||
+		strings.HasSuffix(base, ".pem") ||
+		strings.HasPrefix(base, "credentials")
+}
+
+func docsSubset(selected []string, available []string) bool {
+	allowed := make(map[string]struct{}, len(available))
+	for _, doc := range available {
+		allowed[doc] = struct{}{}
+	}
+	for _, doc := range selected {
+		if _, ok := allowed[doc]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
 func stackPayloadStrings(p contracts.StackPayload) []string {
 	total := 1 + len(p.Harnesses) + len(p.Skills) + len(p.Docs)
 	if p.Notes != nil {
@@ -414,6 +498,18 @@ func stackResponses(stacks []repo.Stack) []contracts.StackResponse {
 	return out
 }
 
+func stackResponsesWithShares(ctx context.Context, tx pgx.Tx, stacks []repo.Stack) ([]contracts.StackResponse, error) {
+	out := make([]contracts.StackResponse, 0, len(stacks))
+	for _, s := range stacks {
+		shares, err := repo.ListSharesForStack(ctx, tx, s.ID)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, stackResponseWithShares(s, shares))
+	}
+	return out, nil
+}
+
 func stackResponse(s repo.Stack) contracts.StackResponse {
 	return contracts.StackResponse{
 		ID:     s.ID,
@@ -429,6 +525,18 @@ func stackResponse(s repo.Stack) contracts.StackResponse {
 		CreatedAt:      s.CreatedAt,
 		UpdatedAt:      s.UpdatedAt,
 	}
+}
+
+func stackResponseWithShares(s repo.Stack, shares []repo.StackShare) contracts.StackResponse {
+	resp := stackResponse(s)
+	resp.Shares = make([]contracts.StackShareResponse, 0, len(shares))
+	for _, share := range shares {
+		resp.Shares = append(resp.Shares, contracts.StackShareResponse{
+			SharedWithUserID: share.SharedWithUserID,
+			SharedAt:         share.SharedAt,
+		})
+	}
+	return resp
 }
 
 func writeStackJSON(w http.ResponseWriter, status int, v any) {

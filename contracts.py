@@ -227,6 +227,13 @@ class StackUpsertRequest(StackPayload):
     pass
 
 
+class StackShareResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    shared_with_user_id: UUID
+    shared_at: datetime
+
+
 class StackResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -236,12 +243,14 @@ class StackResponse(BaseModel):
     classification: Classification
     created_at: datetime
     updated_at: datetime
+    shares: list[StackShareResponse] = Field(default_factory=list)
 
 
 class StackShareRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     shared_with_user_id: UUID
+    included_docs: list[str] = Field(default_factory=list)
 
 
 # ============================================================================

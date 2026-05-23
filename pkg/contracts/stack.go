@@ -20,17 +20,25 @@ type StackPayload struct {
 // StackUpsertRequest mirrors contracts.py StackUpsertRequest.
 type StackUpsertRequest StackPayload
 
+// StackShareResponse is a share grant attached to a stack response.
+type StackShareResponse struct {
+	SharedWithUserID uuid.UUID `json:"shared_with_user_id"`
+	SharedAt         time.Time `json:"shared_at"`
+}
+
 // StackResponse mirrors contracts.py StackResponse.
 type StackResponse struct {
-	ID             uuid.UUID      `json:"id"`
-	UserID         uuid.UUID      `json:"user_id"`
-	Payload        StackPayload   `json:"payload"`
-	Classification Classification `json:"classification"`
-	CreatedAt      time.Time      `json:"created_at"`
-	UpdatedAt      time.Time      `json:"updated_at"`
+	ID             uuid.UUID            `json:"id"`
+	UserID         uuid.UUID            `json:"user_id"`
+	Payload        StackPayload         `json:"payload"`
+	Classification Classification       `json:"classification"`
+	CreatedAt      time.Time            `json:"created_at"`
+	UpdatedAt      time.Time            `json:"updated_at"`
+	Shares         []StackShareResponse `json:"shares,omitempty"`
 }
 
 // StackShareRequest mirrors contracts.py StackShareRequest.
 type StackShareRequest struct {
 	SharedWithUserID uuid.UUID `json:"shared_with_user_id"`
+	IncludedDocs     []string  `json:"included_docs,omitempty"`
 }

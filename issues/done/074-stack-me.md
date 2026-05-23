@@ -30,15 +30,15 @@ This slice MUST refuse to capture: configs, env vars, secrets, MCP server creden
 
 ## Acceptance criteria
 
-- [ ] `GET /v1/stack/me` + draft fallback works on first run
-- [ ] Harness chips render with the right tints and detected/explicit border styles
-- [ ] Skills + doc refs + notes editable; Save persists via `POST /v1/stack`
-- [ ] Secret-shaped path blocked at the input layer with a toast; corresponding test fixture passes
-- [ ] Add share → "Whole team" creates a `stack_shares` row scoped to the tenant
-- [ ] Add share → "Specific teammate" creates a per-user share row
-- [ ] Per-share file deselection works — the POST payload excludes deselected refs
-- [ ] Revoke share removes the row and rerenders the list
-- [ ] No raw configs / env / MCP credentials can leave the client (manual review + a regression test)
+- [x] `GET /v1/stack/me` + draft fallback works on first run
+- [x] Harness chips render with the right tints and detected/explicit border styles
+- [x] Skills + doc refs + notes editable; Save persists via `POST /v1/stack`
+- [x] Secret-shaped path blocked at the input layer with a toast; corresponding test fixture passes
+- [x] Add share → "Whole team" creates a `stack_shares` row scoped to the tenant
+- [x] Add share → "Specific teammate" creates a per-user share row
+- [x] Per-share file deselection works — the POST payload excludes deselected refs
+- [x] Revoke share removes the row and rerenders the list
+- [x] No raw configs / env / MCP credentials can leave the client (manual review + a regression test)
 
 ## Blocked by
 
