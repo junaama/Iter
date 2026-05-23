@@ -53,6 +53,7 @@
 		1A0000740000000000000003 /* StackModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000740000000000000013 /* StackModels.swift */; };
 		1A0000740000000000000004 /* StackStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000740000000000000014 /* StackStore.swift */; };
 		1A0000750000000000000001 /* StackSimulateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000750000000000000011 /* StackSimulateView.swift */; };
+		1A0000770000000000000001 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000770000000000000011 /* SettingsView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -104,6 +105,7 @@
 		1A0000740000000000000013 /* StackModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StackModels.swift; sourceTree = "<group>"; };
 		1A0000740000000000000014 /* StackStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StackStore.swift; sourceTree = "<group>"; };
 		1A0000750000000000000011 /* StackSimulateView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StackSimulateView.swift; sourceTree = "<group>"; };
+		1A0000770000000000000011 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -141,6 +143,7 @@
 				1A0000690000000000000030 /* MenuBar */,
 				1A0000760000000000000030 /* Suggestions */,
 				1A0000740000000000000030 /* Stack */,
+				1A0000770000000000000030 /* Settings */,
 				1A0000650000000000000030 /* Components */,
 				1A0000010000000000000032 /* DesignSystem */,
 				1A0000010000000000000033 /* Resources */,
@@ -249,6 +252,14 @@
 				1A0000740000000000000014 /* StackStore.swift */,
 			);
 			path = Stack;
+			sourceTree = "<group>";
+		};
+		1A0000770000000000000030 /* Settings */ = {
+			isa = PBXGroup;
+			children = (
+				1A0000770000000000000011 /* SettingsView.swift */,
+			);
+			path = Settings;
 			sourceTree = "<group>";
 		};
 		1A0000010000000000000033 /* Resources */ = {
@@ -381,6 +392,7 @@
 				1A0000740000000000000003 /* StackModels.swift in Sources */,
 				1A0000750000000000000001 /* StackSimulateView.swift in Sources */,
 				1A0000740000000000000004 /* StackStore.swift in Sources */,
+				1A0000770000000000000001 /* SettingsView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

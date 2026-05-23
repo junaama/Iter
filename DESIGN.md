@@ -129,7 +129,6 @@ Initials in a 4px-rounded square; mono font; tint per teammate seeded from a fix
 
 Visual specs locked. SwiftUI names suggested; final naming follows the SwiftUI conventions of `swiftui-expert-skill`.
 
-
 ### Menubar dropdown
 - The `NSStatusItem` renders a mono lowercase `i`: coral when connected/running, warn-tinted when paused, and muted with strikethrough when disconnected.
 - Popover width is 304px, uses the same panel token, 1px dividers, dense 32-42px rows, and no card-in-card framing.
@@ -205,6 +204,13 @@ Row layout: `52px (time) · 20px (kind chip) · 1fr (body: bold label + mono det
 - Harness chips keep the existing tint palette; detected harnesses use dashed 1px borders, explicit harnesses use solid tinted 1px borders.
 - Share sheet uses the same panel token and lists file references as checkboxes before the Whole team and Specific teammate actions. Deselecting a file reference removes it from the share payload.
 - The right rail swaps the generic suggestion cards for share grants plus Shared with me cards using existing avatar and rail-card tokens.
+
+### Settings
+- Settings is a rail-less main-pane route reached from the sidebar or menubar.
+- Sections render as vertical bordered `--radius` panels: Account, Tenant, Capture toggles, Retention info, Redaction rules preview, Data export, Notifications.
+- Per-harness capture rows use the canonical harness tint + mono short-code and round-trip through the local daemon IPC. Tenant-default values must show a source badge; local overrides show `this Mac`.
+- Retention copy is read from the app's `SettingsPolicy.retentionSummary` source instead of duplicating the literal in row components.
+- Account export and deletion show unavailable states until `POST /v1/account/export` and `POST /v1/account/delete` exist. Delete still uses the shared destructive confirmation sheet requiring `DELETE`.
 
 ### Buttons (`.btn`, `.btn.primary`)
 - 22px tall, sans, 11px text, 5px radius.

@@ -44,6 +44,7 @@ type State struct {
 	idleSince             *time.Time
 	lastSessionAt         *time.Time
 	capturedToday         int
+	captureOverrides      map[string]bool
 	pendingSuggestions    []localSuggestion
 	suppressedSuggestions map[string]struct{}
 }
@@ -85,6 +86,13 @@ type suppressPatternParams struct {
 	RefinedPrompt string `json:"refined_prompt"`
 	SuggestionID  string `json:"suggestion_id,omitempty"`
 }
+
+type captureSetEnabledParams struct {
+	Harness string `json:"harness"`
+	Enabled *bool  `json:"enabled"`
+}
+
+var supportedCaptureHarnesses = []string{"claude_code", "codex", "pi", "opencode", "gemini_cli"}
 
 func NewServer(cfg Config) (*Server, error) {
 	version := strings.TrimSpace(cfg.Version)
@@ -198,6 +206,12 @@ func (s *Server) dispatch(req request) response {
 	case "resume":
 		s.state.SetPaused(false)
 		return response{ID: req.ID, Result: map[string]any{"paused": false}}
+	case "capture.settings":
+		return response{ID: req.ID, Result: map[string]any{
+			"harnesses": s.state.CaptureSettings(),
+		}}
+	case "capture.set_enabled":
+		return s.setCaptureEnabled(req)
 	case "suggestion.available":
 		return response{ID: req.ID, Result: s.nextSuggestionResult()}
 	case "suggestion.suppress_pattern":
@@ -205,6 +219,20 @@ func (s *Server) dispatch(req request) response {
 	default:
 		return response{ID: req.ID, Error: "unknown_method"}
 	}
+}
+
+func (s *Server) setCaptureEnabled(req request) response {
+	var params captureSetEnabledParams
+	if len(req.Params) == 0 || json.Unmarshal(req.Params, &params) != nil {
+		return response{ID: req.ID, Error: "invalid_params"}
+	}
+	if params.Enabled == nil || !validCaptureHarness(params.Harness) {
+		return response{ID: req.ID, Error: "invalid_params"}
+	}
+	setting := s.state.SetCaptureEnabled(params.Harness, *params.Enabled)
+	return response{ID: req.ID, Result: map[string]any{
+		"harness": setting,
+	}}
 }
 
 func (s *Server) HandleSuggestionAvailable(sessionID uuid.UUID, resp contracts.SuggestResponse) {
@@ -338,6 +366,43 @@ func (s *State) SetPaused(paused bool) {
 	s.paused = paused
 }
 
+func (s *State) CaptureSettings() []map[string]any {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	settings := make([]map[string]any, 0, len(supportedCaptureHarnesses))
+	for _, harness := range supportedCaptureHarnesses {
+		settings = append(settings, s.captureSettingLocked(harness))
+	}
+	return settings
+}
+
+func (s *State) SetCaptureEnabled(harness string, enabled bool) map[string]any {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.captureOverrides == nil {
+		s.captureOverrides = make(map[string]bool)
+	}
+	s.captureOverrides[harness] = enabled
+	return s.captureSettingLocked(harness)
+}
+
+func (s *State) captureSettingLocked(harness string) map[string]any {
+	enabled, ok := s.captureOverrides[harness]
+	if !ok {
+		enabled = true
+	}
+	source := "tenant default"
+	if ok {
+		source = "this Mac"
+	}
+	return map[string]any{
+		"id":        harness,
+		"enabled":   enabled,
+		"inherited": !ok,
+		"source":    source,
+	}
+}
+
 func (s *State) SetCurrentTask(task string, now time.Time) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -421,6 +486,15 @@ func (s *State) isSuggestionSuppressedLocked(refinedPrompt string) bool {
 
 func normalizeSuggestionPrompt(refinedPrompt string) string {
 	return strings.ToLower(strings.Join(strings.Fields(refinedPrompt), " "))
+}
+
+func validCaptureHarness(harness string) bool {
+	for _, candidate := range supportedCaptureHarnesses {
+		if harness == candidate {
+			return true
+		}
+	}
+	return false
 }
 
 func removeStaleSocket(path string) error {

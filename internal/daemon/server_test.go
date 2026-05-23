@@ -81,6 +81,21 @@ func TestServerIPCMethods(t *testing.T) {
 	writeRequest(t, conn, "8", "resume")
 	requireResponse(t, reader, "8", "paused", false)
 
+	writeRequest(t, conn, "9", "capture.settings")
+	captureStatus := readResponse(t, reader, "9")
+	harnesses, ok := captureStatus["harnesses"].([]any)
+	if !ok || len(harnesses) != 5 {
+		t.Fatalf("harnesses = %#v, want five capture settings", captureStatus["harnesses"])
+	}
+	firstHarness, ok := harnesses[0].(map[string]any)
+	if !ok {
+		t.Fatalf("harnesses[0] = %#v, want object", harnesses[0])
+	}
+	requireResult(t, firstHarness, "id", "claude_code")
+	requireResult(t, firstHarness, "enabled", true)
+	requireResult(t, firstHarness, "inherited", true)
+	requireResult(t, firstHarness, "source", "tenant default")
+
 	cancel()
 	if err := <-errCh; err != nil {
 		t.Fatalf("Serve() error = %v", err)
@@ -108,6 +123,51 @@ func TestServeRefusesNonSocketAtSocketPath(t *testing.T) {
 	}
 	if err := server.Serve(context.Background()); err == nil {
 		t.Fatal("Serve() error = nil, want refusal to remove non-socket")
+	}
+}
+
+func TestCaptureSetEnabledOverridesTenantDefault(t *testing.T) {
+	server := newTestServer(t)
+	params := json.RawMessage(`{"harness":"codex","enabled":false}`)
+
+	res := server.dispatch(request{ID: "capture-1", Method: "capture.set_enabled", Params: params})
+	if res.Error != "" {
+		t.Fatalf("dispatch error = %q", res.Error)
+	}
+	harness, ok := res.Result["harness"].(map[string]any)
+	if !ok {
+		t.Fatalf("harness = %#v, want object", res.Result["harness"])
+	}
+	requireResult(t, harness, "id", "codex")
+	requireResult(t, harness, "enabled", false)
+	requireResult(t, harness, "inherited", false)
+	requireResult(t, harness, "source", "this Mac")
+
+	res = server.dispatch(request{ID: "capture-2", Method: "capture.settings"})
+	if res.Error != "" {
+		t.Fatalf("dispatch error = %q", res.Error)
+	}
+	settings, ok := res.Result["harnesses"].([]map[string]any)
+	if !ok {
+		t.Fatalf("harnesses = %#v, want typed settings", res.Result["harnesses"])
+	}
+	for _, setting := range settings {
+		if setting["id"] == "codex" {
+			requireResult(t, setting, "enabled", false)
+			requireResult(t, setting, "source", "this Mac")
+			return
+		}
+	}
+	t.Fatal("codex capture setting missing")
+}
+
+func TestCaptureSetEnabledRejectsUnknownHarness(t *testing.T) {
+	server := newTestServer(t)
+	params := json.RawMessage(`{"harness":"unknown","enabled":true}`)
+
+	res := server.dispatch(request{ID: "capture-invalid", Method: "capture.set_enabled", Params: params})
+	if res.Error != "invalid_params" {
+		t.Fatalf("dispatch error = %q, want invalid_params", res.Error)
 	}
 }
 

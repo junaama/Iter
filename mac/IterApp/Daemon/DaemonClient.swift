@@ -11,25 +11,48 @@ struct DaemonStatus: Equatable {
     var paused: Bool = false
 }
 
+struct CaptureHarnessSetting: Identifiable, Equatable {
+    let id: HarnessID
+    var enabled: Bool
+    var inherited: Bool
+    var source: String
+}
+
 @MainActor
 @Observable
 final class DaemonClient {
+    private enum Storage {
+        static let notificationsEnabled = "dev.iter.suggestionNotifications.enabled"
+    }
+
     var connected = false
     var status = DaemonStatus()
+    var captureSettings: [CaptureHarnessSetting] = HarnessID.allCases.map {
+        CaptureHarnessSetting(id: $0, enabled: true, inherited: true, source: "tenant default")
+    }
+    var suggestionNotificationsEnabled: Bool {
+        didSet {
+            defaults.set(suggestionNotificationsEnabled, forKey: Storage.notificationsEnabled)
+        }
+    }
     var daemonVersion = ""
     var versionMismatch = false
     var lastError: String?
 
     private let socketPath: String
     private let appVersion: String
+    private let defaults: UserDefaults
     private var suggestionTask: Task<Void, Never>?
 
     init(
         socketPath: String = DaemonClient.defaultSocketPath(),
-        appVersion: String = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.1"
+        appVersion: String = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.1",
+        defaults: UserDefaults = .standard
     ) {
         self.socketPath = socketPath
         self.appVersion = appVersion
+        self.defaults = defaults
+        self.suggestionNotificationsEnabled = defaults.object(forKey: Storage.notificationsEnabled) as? Bool ?? true
     }
 
     func start() {
@@ -54,6 +77,10 @@ final class DaemonClient {
 
     func resume() async {
         await sendControl("resume")
+    }
+
+    func setSuggestionNotificationsEnabled(_ enabled: Bool) {
+        suggestionNotificationsEnabled = enabled
     }
 
     func recordStackSimulated(userID: UUID, worktreePath: String) async throws {
@@ -83,6 +110,40 @@ final class DaemonClient {
         }
     }
 
+    func refreshCaptureSettings() async {
+        do {
+            let result = try await request("capture.settings")
+            captureSettings = Self.parseCaptureSettings(result)
+            connected = true
+            lastError = nil
+        } catch {
+            connected = false
+            lastError = error.localizedDescription
+        }
+    }
+
+    func setCapture(_ harness: HarnessID, enabled: Bool) async {
+        do {
+            let result = try await request(
+                "capture.set_enabled",
+                params: [
+                    "harness": harness.rawValue,
+                    "enabled": enabled
+                ]
+            )
+            if let setting = Self.parseCaptureSetting(result["harness"]) {
+                upsertCaptureSetting(setting)
+            } else {
+                await refreshCaptureSettings()
+            }
+            connected = true
+            lastError = nil
+        } catch {
+            connected = false
+            lastError = error.localizedDescription
+        }
+    }
+
     var footerLabel: String {
         if !connected { return "daemon · offline" }
         if status.paused { return "daemon · paused" }
@@ -103,7 +164,9 @@ final class DaemonClient {
             do {
                 let result = try await request("suggestion.available")
                 if let suggestion = IterSuggestion(result: result) {
-                    await SuggestionNotificationPresenter.shared.present(suggestion)
+                    if suggestionNotificationsEnabled {
+                        await SuggestionNotificationPresenter.shared.present(suggestion)
+                    }
                 }
                 backoff = 0.25
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
@@ -237,6 +300,37 @@ final class DaemonClient {
             capturedToday: result["captured_today"] as? Int ?? 0,
             paused: result["paused"] as? Bool ?? false
         )
+    }
+
+    nonisolated private static func parseCaptureSettings(_ result: [String: Any]) -> [CaptureHarnessSetting] {
+        let settings = (result["harnesses"] as? [Any] ?? []).compactMap(parseCaptureSetting)
+        let byID = Dictionary(uniqueKeysWithValues: settings.map { ($0.id, $0) })
+        return HarnessID.allCases.map {
+            byID[$0] ?? CaptureHarnessSetting(id: $0, enabled: true, inherited: true, source: "tenant default")
+        }
+    }
+
+    nonisolated private static func parseCaptureSetting(_ value: Any?) -> CaptureHarnessSetting? {
+        guard let object = value as? [String: Any],
+              let rawID = object["id"] as? String,
+              let id = HarnessID(rawValue: rawID)
+        else {
+            return nil
+        }
+        return CaptureHarnessSetting(
+            id: id,
+            enabled: object["enabled"] as? Bool ?? true,
+            inherited: object["inherited"] as? Bool ?? false,
+            source: object["source"] as? String ?? "this Mac"
+        )
+    }
+
+    private func upsertCaptureSetting(_ setting: CaptureHarnessSetting) {
+        if let index = captureSettings.firstIndex(where: { $0.id == setting.id }) {
+            captureSettings[index] = setting
+        } else {
+            captureSettings.append(setting)
+        }
     }
 
     nonisolated private static func parseDate(_ value: Any?) -> Date? {
