@@ -82,6 +82,7 @@ enum StackAPIError: LocalizedError {
     case invalidURL
     case notFound
     case unauthorized
+    case forbidden
     case serverStatus(Int)
     case emptyResponse
 
@@ -93,6 +94,8 @@ enum StackAPIError: LocalizedError {
             return "Stack not saved"
         case .unauthorized:
             return "Sign in required"
+        case .forbidden:
+            return "This teammate has not shared their stack with you."
         case .serverStatus(let status):
             return "Server returned \(status)"
         case .emptyResponse:
@@ -170,8 +173,11 @@ struct StackAPIClient {
         if httpResponse.statusCode == 404 {
             throw StackAPIError.notFound
         }
-        if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
+        if httpResponse.statusCode == 401 {
             throw StackAPIError.unauthorized
+        }
+        if httpResponse.statusCode == 403 {
+            throw StackAPIError.forbidden
         }
         guard acceptedStatuses.contains(httpResponse.statusCode) else {
             throw StackAPIError.serverStatus(httpResponse.statusCode)

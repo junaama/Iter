@@ -52,6 +52,7 @@
 		1A0000740000000000000002 /* StackMeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000740000000000000012 /* StackMeView.swift */; };
 		1A0000740000000000000003 /* StackModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000740000000000000013 /* StackModels.swift */; };
 		1A0000740000000000000004 /* StackStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000740000000000000014 /* StackStore.swift */; };
+		1A0000750000000000000001 /* StackSimulateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000750000000000000011 /* StackSimulateView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -102,6 +103,7 @@
 		1A0000740000000000000012 /* StackMeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StackMeView.swift; sourceTree = "<group>"; };
 		1A0000740000000000000013 /* StackModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StackModels.swift; sourceTree = "<group>"; };
 		1A0000740000000000000014 /* StackStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StackStore.swift; sourceTree = "<group>"; };
+		1A0000750000000000000011 /* StackSimulateView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StackSimulateView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -243,6 +245,7 @@
 				1A0000740000000000000011 /* StackAPIClient.swift */,
 				1A0000740000000000000012 /* StackMeView.swift */,
 				1A0000740000000000000013 /* StackModels.swift */,
+				1A0000750000000000000011 /* StackSimulateView.swift */,
 				1A0000740000000000000014 /* StackStore.swift */,
 			);
 			path = Stack;
@@ -376,6 +379,7 @@
 				1A0000740000000000000001 /* StackAPIClient.swift in Sources */,
 				1A0000740000000000000002 /* StackMeView.swift in Sources */,
 				1A0000740000000000000003 /* StackModels.swift in Sources */,
+				1A0000750000000000000001 /* StackSimulateView.swift in Sources */,
 				1A0000740000000000000004 /* StackStore.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

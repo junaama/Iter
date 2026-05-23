@@ -56,6 +56,15 @@ final class DaemonClient {
         await sendControl("resume")
     }
 
+    func recordStackSimulated(userID: UUID, worktreePath: String) async throws {
+        _ = try await request("stack.simulated", params: [
+            "user_id": userID.uuidString,
+            "worktree_path": worktreePath
+        ])
+        connected = true
+        lastError = nil
+    }
+
     func refresh() async {
         do {
             let versionResult = try await request("version")

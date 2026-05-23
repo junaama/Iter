@@ -7,6 +7,7 @@ enum Route: Hashable {
     case team
     case sessions
     case stack
+    case stackSimulate(userId: UUID)
     case settings
     case sessionDetail(id: String)
 
@@ -20,6 +21,8 @@ enum Route: Hashable {
             return "Sessions"
         case .stack:
             return "Stack"
+        case .stackSimulate:
+            return "Stack"
         case .settings:
             return "Settings"
         case .sessionDetail:
@@ -29,6 +32,8 @@ enum Route: Hashable {
 
     var breadcrumb: String {
         switch self {
+        case .stackSimulate(let userID):
+            return "Workspace / Stack / \(userID.uuidString.prefix(8))"
         case .sessionDetail(let id):
             return "Me / sessions / \(id)"
         case .settings:
@@ -40,7 +45,7 @@ enum Route: Hashable {
 
     var showsRail: Bool {
         switch self {
-        case .sessionDetail, .settings:
+        case .sessionDetail, .stackSimulate, .settings:
             return false
         default:
             return true
@@ -69,7 +74,8 @@ enum Route: Hashable {
 
     func matchesTopLevel(_ candidate: Route) -> Bool {
         switch (self, candidate) {
-        case (.me, .me), (.team, .team), (.sessions, .sessions), (.stack, .stack), (.settings, .settings):
+        case (.me, .me), (.team, .team), (.sessions, .sessions), (.stack, .stack), (.stackSimulate, .stack),
+            (.settings, .settings):
             return true
         default:
             return false
@@ -123,6 +129,7 @@ struct WorkspaceView: View {
 
     @State private var layoutStore = LayoutVariantStore()
     @State private var dashboardMeStore = DashboardMeStore()
+    @State private var dashboardTeamStore = DashboardTeamStore()
     @State private var stackStore = StackStore()
     @State private var previousListRoute: Route = .me
     @State private var searchText = ""
@@ -145,7 +152,11 @@ struct WorkspaceView: View {
                 )
 
                 HStack(spacing: 0) {
-                    SidebarView(route: $router.route, stackStore: stackStore, dashboardMeStore: dashboardMeStore) { route in
+                    SidebarView(
+                        route: $router.route,
+                        stackStore: stackStore,
+                        dashboardMeStore: dashboardMeStore
+                    ) { route in
                         if case .sessionDetail = route {
                             previousListRoute = router.route.detailBackRoute
                         }
@@ -157,9 +168,9 @@ struct WorkspaceView: View {
                             layoutStore: layoutStore,
                             route: $router.route,
                             previousListRoute: previousListRoute,
-                            isDashboardRefreshing: dashboardMeStore.isLoading
+                            isDashboardRefreshing: dashboardRefreshing
                         ) {
-                            Task { await dashboardMeStore.load(forceRefresh: true) }
+                            Task { await refreshDashboard() }
                         }
 
                         HStack(spacing: 0) {
@@ -167,6 +178,7 @@ struct WorkspaceView: View {
                                 route: router.route,
                                 layoutVariant: layoutStore.selected,
                                 dashboardMeStore: dashboardMeStore,
+                                dashboardTeamStore: dashboardTeamStore,
                                 stackStore: stackStore
                             ) { route in
                                 if case .sessionDetail = route {
@@ -179,8 +191,11 @@ struct WorkspaceView: View {
                                 RightRailView(
                                     route: router.route,
                                     dashboard: dashboardMeStore.dashboard,
+                                    teamDashboard: dashboardTeamStore.dashboard,
                                     stackStore: stackStore
-                                )
+                                ) { route in
+                                    router.route = route
+                                }
                                     .frame(width: router.route.railWidth)
                             }
                         }
@@ -222,6 +237,18 @@ struct WorkspaceView: View {
             Button("Dismiss", role: .cancel) {}
         } message: {
             Text("Install update to continue.")
+        }
+    }
+
+    private var dashboardRefreshing: Bool {
+        router.route.matchesTopLevel(.team) ? dashboardTeamStore.isLoading : dashboardMeStore.isLoading
+    }
+
+    private func refreshDashboard() async {
+        if router.route.matchesTopLevel(.team) {
+            await dashboardTeamStore.load(forceRefresh: true)
+        } else {
+            await dashboardMeStore.load(forceRefresh: true)
         }
     }
 }
@@ -396,7 +423,8 @@ private struct SidebarView: View {
         SidebarNavItem(route: .me, title: "Me", symbol: "person", count: nil),
         SidebarNavItem(route: .team, title: "Team", symbol: "person.2", count: nil),
         SidebarNavItem(route: .sessions, title: "Sessions", symbol: "rectangle.stack", count: nil),
-        SidebarNavItem(route: .stack, title: "Stack", symbol: "square.stack.3d.up", count: nil)
+        SidebarNavItem(route: .stack, title: "Stack", symbol: "square.stack.3d.up", count: nil),
+        SidebarNavItem(route: .settings, title: "Settings", symbol: "gearshape", count: nil)
     ]
 
     var body: some View {
@@ -723,6 +751,13 @@ private struct SubbarView: View {
                     .lineLimit(1)
 
                 Spacer()
+            } else if route.matchesTopLevel(.settings) {
+                Text(verbatim: route.breadcrumb)
+                    .font(IterFont.monoSmall)
+                    .foregroundStyle(Color.iterTextTertiary(for: colorScheme))
+                    .lineLimit(1)
+
+                Spacer()
             } else {
                 Text(verbatim: route.breadcrumb)
                     .font(IterFont.monoSmall)
@@ -850,12 +885,15 @@ private struct MainPaneView: View {
     let route: Route
     let layoutVariant: LayoutVariant
     let dashboardMeStore: DashboardMeStore
+    let dashboardTeamStore: DashboardTeamStore
     let stackStore: StackStore
     let onNavigate: (Route) -> Void
 
     var body: some View {
         if case .sessionDetail(let id) = route {
             SessionDetailView(sessionID: id)
+        } else if case .stackSimulate(let userID) = route {
+            StackSimulateView(userID: userID)
         } else if route.matchesTopLevel(.me) {
             DashboardMeView(
                 store: dashboardMeStore,
@@ -863,8 +901,17 @@ private struct MainPaneView: View {
                 onSelectSession: { id in onNavigate(.sessionDetail(id: id)) },
                 onViewAll: { onNavigate(.sessions) }
             )
+        } else if route.matchesTopLevel(.team) {
+            DashboardTeamView(
+                store: dashboardTeamStore,
+                layoutVariant: layoutVariant,
+                onSelectSession: { id in onNavigate(.sessionDetail(id: id)) },
+                onViewAll: { onNavigate(.sessions) }
+            )
         } else if route.matchesTopLevel(.stack) {
             StackMeView(store: stackStore)
+        } else if route.matchesTopLevel(.settings) {
+            SettingsView(dashboard: dashboardMeStore.dashboard)
         } else {
             notImplementedView
         }
@@ -981,10 +1028,13 @@ private struct RightRailView: View {
     let route: Route
     let dashboard: DashboardMeResponse?
     let stackStore: StackStore
+    let onNavigate: (Route) -> Void
 
     var body: some View {
         if route.matchesTopLevel(.stack) {
-            StackRightRailView(store: stackStore)
+            StackRightRailView(store: stackStore) { userID in
+                onNavigate(.stackSimulate(userId: userID))
+            }
         } else {
             VStack(alignment: .leading, spacing: IterSpacing.gapMedium) {
                 if route.matchesTopLevel(.me) {

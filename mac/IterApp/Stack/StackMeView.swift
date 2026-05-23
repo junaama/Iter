@@ -421,6 +421,7 @@ private struct StackDocSelectionList: View {
 struct StackRightRailView: View {
     @Environment(\.colorScheme) private var colorScheme
     @Bindable var store: StackStore
+    var onSimulate: (UUID) -> Void = { _ in }
 
     var body: some View {
         VStack(alignment: .leading, spacing: IterSpacing.gapMedium) {
@@ -430,7 +431,7 @@ struct StackRightRailView: View {
                 items: []
             )
             StackShareGrantList(store: store)
-            StackSharedWithMeCard(items: store.sharedWithMe)
+            StackSharedWithMeCard(items: store.sharedWithMe, onSimulate: onSimulate)
             Spacer()
         }
         .padding(IterSpacing.gapMedium)
@@ -492,6 +493,7 @@ private struct StackSharedWithMeCard: View {
     @Environment(\.colorScheme) private var colorScheme
 
     let items: [SharedStackSummary]
+    let onSimulate: (UUID) -> Void
 
     var body: some View {
         VStack(spacing: 0) {
@@ -509,19 +511,30 @@ private struct StackSharedWithMeCard: View {
             .padding(.bottom, 6)
 
             ForEach(items) { item in
-                HStack(spacing: IterSpacing.gapSmall) {
-                    Avatar(initials: item.initials, seed: item.avatarSeed)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(verbatim: item.displayName)
-                            .font(IterFont.sansSmall)
-                            .foregroundStyle(Color.iterTextPrimary(for: colorScheme))
-                        Text(verbatim: item.stackName)
-                            .font(IterFont.monoSmall)
+                Button {
+                    onSimulate(item.userID)
+                } label: {
+                    HStack(spacing: IterSpacing.gapSmall) {
+                        Avatar(initials: item.initials, seed: item.avatarSeed)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(verbatim: item.displayName)
+                                .font(IterFont.sansSmall)
+                                .foregroundStyle(Color.iterTextPrimary(for: colorScheme))
+                            Text(verbatim: item.stackName)
+                                .font(IterFont.monoSmall)
+                                .foregroundStyle(Color.iterTextTertiary(for: colorScheme))
+                                .lineLimit(1)
+                        }
+                        Spacer()
+                        Image(systemName: "arrow.up.forward")
+                            .font(.system(size: 10, weight: .semibold))
                             .foregroundStyle(Color.iterTextTertiary(for: colorScheme))
-                            .lineLimit(1)
+                            .accessibilityHidden(true)
                     }
-                    Spacer()
+                    .contentShape(.rect)
                 }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Try \(item.displayName)'s stack")
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
                 .overlay(alignment: .top) {
