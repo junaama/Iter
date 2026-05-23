@@ -4,11 +4,35 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/iter-dev/iter/internal/langfuse"
 	"github.com/iter-dev/iter/pkg/contracts"
 )
+
+// recordingTracer is an in-process Tracer for tests; records every event
+// submitted so assertions can count and inspect them. Safe for concurrent
+// use.
+type recordingTracer struct {
+	mu     sync.Mutex
+	events []langfuse.Event
+}
+
+func (t *recordingTracer) Submit(e langfuse.Event) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.events = append(t.events, e)
+}
+
+func (t *recordingTracer) Events() []langfuse.Event {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	out := make([]langfuse.Event, len(t.events))
+	copy(out, t.events)
+	return out
+}
 
 func cheapReq() contracts.LLMCompletionRequest {
 	return contracts.LLMCompletionRequest{
@@ -172,6 +196,88 @@ func TestRouterBreakerOpensAndSkipsProvider(t *testing.T) {
 	}
 	if second.Calls() != 3 {
 		t.Errorf("second provider should have absorbed all 3 calls; got %d", second.Calls())
+	}
+}
+
+func TestRouterNilTracerNoChangeInBehavior(t *testing.T) {
+	first := &StubProvider{NameValue: "a", Default: contracts.LLMCompletionResponse{Text: "from-a"}}
+	r := NewRouter(RouterConfig{
+		Providers: []Provider{first},
+		Priority:  map[contracts.LLMTier][]string{contracts.LLMTierCheapHot: {"a"}},
+		// Tracer left nil — emission path must be a no-op.
+	})
+
+	resp, err := r.Complete(context.Background(), cheapReq())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.Text != "from-a" {
+		t.Errorf("got text %q", resp.Text)
+	}
+}
+
+func TestRouterEmitsOneGenerationOnSuccess(t *testing.T) {
+	tr := &recordingTracer{}
+	first := &StubProvider{
+		NameValue: "a",
+		Default: contracts.LLMCompletionResponse{
+			Text: "ok", Model: "test-m", TokensIn: 3, TokensOut: 4,
+		},
+	}
+	r := NewRouter(RouterConfig{
+		Providers: []Provider{first},
+		Priority:  map[contracts.LLMTier][]string{contracts.LLMTierCheapHot: {"a"}},
+		Tracer:    tr,
+	})
+
+	if _, err := r.Complete(context.Background(), cheapReq()); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	events := tr.Events()
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(events))
+	}
+	body, ok := events[0].Body["level"]
+	if !ok || body != "DEFAULT" {
+		t.Errorf("expected level=DEFAULT, got %v", events[0].Body["level"])
+	}
+	if events[0].Body["name"] != "a.cheap_hot" {
+		t.Errorf("name = %v, want a.cheap_hot", events[0].Body["name"])
+	}
+	if events[0].Body["output"] != "ok" {
+		t.Errorf("output = %v", events[0].Body["output"])
+	}
+}
+
+func TestRouterEmitsErrorLevelOnFailure(t *testing.T) {
+	tr := &recordingTracer{}
+	first := &StubProvider{NameValue: "a", FailWith: errors.New("boom")}
+	second := &StubProvider{NameValue: "b", Default: contracts.LLMCompletionResponse{Text: "ok"}}
+	r := NewRouter(RouterConfig{
+		Providers: []Provider{first, second},
+		Priority:  map[contracts.LLMTier][]string{contracts.LLMTierCheapHot: {"a", "b"}},
+		Tracer:    tr,
+	})
+
+	if _, err := r.Complete(context.Background(), cheapReq()); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	events := tr.Events()
+	if len(events) != 2 {
+		t.Fatalf("expected 2 events (one error, one success), got %d", len(events))
+	}
+	// First event = "a" failing.
+	if events[0].Body["level"] != "ERROR" {
+		t.Errorf("event[0].level = %v, want ERROR", events[0].Body["level"])
+	}
+	if got := events[0].Body["statusMessage"]; got != "boom" {
+		t.Errorf("event[0].statusMessage = %v, want boom", got)
+	}
+	// Second event = "b" succeeding.
+	if events[1].Body["level"] != "DEFAULT" {
+		t.Errorf("event[1].level = %v, want DEFAULT", events[1].Body["level"])
 	}
 }
 

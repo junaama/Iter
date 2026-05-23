@@ -2,13 +2,27 @@ package llm
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
+	"github.com/google/uuid"
+
+	"github.com/iter-dev/iter/internal/langfuse"
 	"github.com/iter-dev/iter/pkg/contracts"
 )
+
+// Tracer is the narrow boundary the router uses to emit observability
+// events. Satisfied by *langfuse.Client today; kept as an interface so
+// tests can plug in an in-memory recorder and so a future swap (OTel,
+// no-op stub) doesn't ripple through router code. A nil Tracer is the
+// "tracing off" signal — the router skips all emission overhead.
+type Tracer interface {
+	Submit(e langfuse.Event)
+}
 
 // Router fronts a fixed list of providers behind per-provider circuit
 // breakers and a per-tier priority order. Construction is via NewRouter;
@@ -26,6 +40,12 @@ type Router struct {
 	priority  map[contracts.LLMTier][]string // provider names in order per tier
 	cfg       BreakerConfig
 
+	// Tracer, when non-nil, receives one generation event per provider
+	// attempt that actually invoked the provider (i.e. skipped attempts
+	// like "breaker_open" or "tier_unsupported" do NOT emit). Nil is the
+	// "tracing disabled" state and the LLM path is unchanged.
+	Tracer Tracer
+
 	mu sync.RWMutex // guards priority (mutated only by NewRouter today)
 }
 
@@ -40,6 +60,11 @@ type RouterConfig struct {
 	Providers  []Provider
 	Priority   map[contracts.LLMTier][]string
 	BreakerCfg BreakerConfig
+
+	// Tracer is optional. When non-nil the router emits one Langfuse
+	// generation per provider attempt that actually invoked the
+	// provider. Nil = tracing off (LLM path is unchanged).
+	Tracer Tracer
 }
 
 // NewRouter builds a Router. Providers not referenced in Priority are
@@ -51,6 +76,7 @@ func NewRouter(cfg RouterConfig) *Router {
 		breakers:  make(map[string]*breaker, len(cfg.Providers)),
 		priority:  make(map[contracts.LLMTier][]string, len(cfg.Priority)),
 		cfg:       cfg.BreakerCfg,
+		Tracer:    cfg.Tracer,
 	}
 	for _, p := range cfg.Providers {
 		r.breakers[p.Name()] = newBreaker(cfg.BreakerCfg)
@@ -115,20 +141,83 @@ func (r *Router) Complete(ctx context.Context, req contracts.LLMCompletionReques
 			attempts = append(attempts, name+":ctx_"+err.Error())
 			break
 		}
+		// Per-attempt trace ID — one Langfuse generation per provider
+		// invocation. A retry across providers shares no trace because
+		// upstream context plumbing isn't here yet (v1).
+		startedAt := time.Now()
 		resp, err := p.Complete(ctx, req)
 		if err != nil {
 			b.failure()
 			attempts = append(attempts, fmt.Sprintf("%s:%s", name, errorTag(err)))
+			r.emit(ctx, name, req, contracts.LLMCompletionResponse{}, startedAt, time.Now(), err)
 			continue
 		}
 		b.success()
 		if resp.Provider == "" {
 			resp.Provider = name
 		}
+		r.emit(ctx, name, req, resp, startedAt, time.Now(), nil)
 		return resp, nil
 	}
 
 	return contracts.LLMCompletionResponse{}, fmt.Errorf("tier %q tried [%s]: %w", req.Tier, strings.Join(attempts, ","), ErrAllProvidersUnavailable)
+}
+
+// emit submits one Langfuse generation event for a provider attempt.
+// Skips silently when no Tracer is configured (nil-receiver-safe on the
+// tracer side, but we still short-circuit to avoid the json.Marshal of
+// the messages). All errors stay inside this function: emission can
+// never fail an LLM call.
+func (r *Router) emit(ctx context.Context, provider string, req contracts.LLMCompletionRequest, resp contracts.LLMCompletionResponse, startedAt, endedAt time.Time, callErr error) {
+	if r.Tracer == nil {
+		return
+	}
+	defer func() {
+		// Defensive: if anything in event construction panics, never
+		// propagate to the caller. The LLM path must remain isolated
+		// from observability bugs.
+		_ = recover()
+	}()
+
+	// Encode messages as JSON so the Langfuse UI shows the full chat
+	// rather than the last user turn. Fall back to the last message's
+	// content if marshaling fails (shouldn't, but defensively).
+	input := ""
+	if raw, mErr := json.Marshal(req.Messages); mErr == nil {
+		input = string(raw)
+	} else if len(req.Messages) > 0 {
+		input = req.Messages[len(req.Messages)-1].Content
+	}
+
+	gen := langfuse.Generation{
+		TraceID:   uuid.NewString(),
+		Name:      provider + "." + string(req.Tier),
+		StartTime: startedAt,
+		EndTime:   endedAt,
+		Model:     resp.Model,
+		Input:     input,
+		Output:    resp.Text,
+		Usage: langfuse.Usage{
+			Input:  resp.TokensIn,
+			Output: resp.TokensOut,
+			Total:  resp.TokensIn + resp.TokensOut,
+		},
+		Metadata: map[string]string{
+			"tier":     string(req.Tier),
+			"provider": provider,
+		},
+	}
+	if callErr != nil {
+		gen.Level = langfuse.LevelError
+		gen.StatusMessage = callErr.Error()
+	}
+	// Tag the tenant when the request context carries an authenticated
+	// principal — handy for filtering in the Langfuse UI.
+	if p, ok := contracts.PrincipalFromContext(ctx); ok && p.TenantID != (uuid.UUID{}) {
+		gen.Metadata["tenant_id"] = p.TenantID.String()
+	}
+
+	r.Tracer.Submit(langfuse.NewGenerationEvent(gen))
 }
 
 // errorTag produces a short, log-friendly tag for the attempts string.
