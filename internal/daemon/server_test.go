@@ -4,11 +4,16 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/google/uuid"
+	"github.com/iter-dev/iter/pkg/contracts"
 )
 
 func TestServerIPCMethods(t *testing.T) {
@@ -81,6 +86,123 @@ func TestServeRefusesNonSocketAtSocketPath(t *testing.T) {
 	}
 }
 
+func TestSuggestionAvailableReturnsDecisionFunctionResult(t *testing.T) {
+	server := newTestServer(t)
+	sessionID := uuid.New()
+	suggestionID := uuid.New()
+	refinedPrompt := "Use the migration verifier before changing schema files."
+	rationale := "A teammate caught an RLS regression this way."
+	wallTimeMS := 421
+
+	server.HandleSuggestionAvailable(sessionID, contracts.SuggestResponse{
+		SuggestionID:  &suggestionID,
+		RefinedPrompt: &refinedPrompt,
+		Rationale:     &rationale,
+		Confidence:    0.80,
+		Evidence: []contracts.SuggestEvidence{{
+			SessionID:              uuid.New(),
+			Outcome:                "tests_passed",
+			WallTimeMS:             &wallTimeMS,
+			ContributorDisplayName: "M. Chen",
+		}},
+	})
+
+	res := server.dispatch(request{ID: "suggestion-1", Method: "suggestion.available"})
+	if res.Error != "" {
+		t.Fatalf("dispatch error = %q", res.Error)
+	}
+	requireResult(t, res.Result, "available", true)
+	requireResult(t, res.Result, "session_id", sessionID.String())
+	requireResult(t, res.Result, "suggestion_id", suggestionID.String())
+	requireResult(t, res.Result, "action", string(contracts.ActionReplace))
+	requireResult(t, res.Result, "refined_prompt", refinedPrompt)
+	requireResult(t, res.Result, "rationale", rationale)
+	if got := res.Result["evidence"].([]contracts.SuggestEvidence); len(got) != 1 {
+		t.Fatalf("evidence len = %d, want 1", len(got))
+	}
+}
+
+func TestSuggestionAvailableSuppressesNoSuggestionReason(t *testing.T) {
+	server := newTestServer(t)
+	refinedPrompt := "This should not be shown."
+	reason := contracts.NoSuggestionLowConfidence
+
+	server.HandleSuggestionAvailable(uuid.New(), contracts.SuggestResponse{
+		Action:             contracts.ActionSuppress,
+		RefinedPrompt:      &refinedPrompt,
+		Confidence:         0.2,
+		NoSuggestionReason: &reason,
+	})
+
+	res := server.dispatch(request{ID: "suggestion-2", Method: "suggestion.available"})
+	if res.Error != "" {
+		t.Fatalf("dispatch error = %q", res.Error)
+	}
+	requireResult(t, res.Result, "available", false)
+}
+
+func TestSuggestionAvailableSuppressesDangerousPatternAndLogsSecurityEvent(t *testing.T) {
+	logBuf := &strings.Builder{}
+	server := newTestServerWithLogger(t, slog.New(slog.NewTextHandler(writerFunc(func(p []byte) (int, error) {
+		return logBuf.Write(p)
+	}), nil)))
+	refinedPrompt := "Run the cleanup:\nrm -rf /"
+
+	server.HandleSuggestionAvailable(uuid.New(), contracts.SuggestResponse{
+		RefinedPrompt: &refinedPrompt,
+		Confidence:    0.95,
+	})
+
+	res := server.dispatch(request{ID: "suggestion-3", Method: "suggestion.available"})
+	requireResult(t, res.Result, "available", false)
+	if !strings.Contains(logBuf.String(), "denylist_hit") || !strings.Contains(logBuf.String(), "pattern_id") {
+		t.Fatalf("denylist security event missing opaque pattern id: %s", logBuf.String())
+	}
+}
+
+func TestSuppressPatternRemovesQueuedAndFutureMatchingSuggestions(t *testing.T) {
+	server := newTestServer(t)
+	refinedPrompt := "Prefer the existing repository helper before adding a duplicate."
+
+	server.HandleSuggestionAvailable(uuid.New(), contracts.SuggestResponse{
+		RefinedPrompt: &refinedPrompt,
+		Confidence:    0.91,
+	})
+
+	params := json.RawMessage(`{"refined_prompt":"Prefer the existing repository helper before adding a duplicate."}`)
+	res := server.dispatch(request{ID: "suppress-1", Method: "suggestion.suppress_pattern", Params: params})
+	if res.Error != "" {
+		t.Fatalf("suppress dispatch error = %q", res.Error)
+	}
+	requireResult(t, res.Result, "suppressed", true)
+	requireResult(t, res.Result, "backend_endpoint", "not_implemented")
+
+	res = server.dispatch(request{ID: "suggestion-4", Method: "suggestion.available"})
+	requireResult(t, res.Result, "available", false)
+
+	server.HandleSuggestionAvailable(uuid.New(), contracts.SuggestResponse{
+		RefinedPrompt: &refinedPrompt,
+		Confidence:    0.91,
+	})
+
+	res = server.dispatch(request{ID: "suggestion-5", Method: "suggestion.available"})
+	requireResult(t, res.Result, "available", false)
+}
+
+func newTestServer(t *testing.T) *Server {
+	t.Helper()
+	return newTestServerWithLogger(t, silentLogger())
+}
+
+func newTestServerWithLogger(t *testing.T, logger *slog.Logger) *Server {
+	t.Helper()
+	server, err := NewServer(Config{SocketPath: filepath.Join(t.TempDir(), "daemon.sock"), Logger: logger})
+	if err != nil {
+		t.Fatalf("NewServer() error = %v", err)
+	}
+	return server
+}
+
 func writeRequest(t *testing.T, conn net.Conn, id string, method string) {
 	t.Helper()
 	payload, err := json.Marshal(map[string]string{"id": id, "method": method})
@@ -143,4 +265,16 @@ func waitForSocket(t *testing.T, path string) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	t.Fatalf("socket %s was not created", path)
+}
+
+func silentLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(writerFunc(func(p []byte) (int, error) {
+		return len(p), nil
+	}), nil))
+}
+
+type writerFunc func([]byte) (int, error)
+
+func (f writerFunc) Write(p []byte) (int, error) {
+	return f(p)
 }

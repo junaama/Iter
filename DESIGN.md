@@ -14,7 +14,7 @@ Visual language and locked design tokens for Iter v1. Source of truth for the Sw
 
 The prototype is **reference, not production code**. Match the visual output pixel-for-pixel in SwiftUI; don't port React/CSS structure literally. Don't render the prototype in a browser unless asked — every token, dimension, and rule is in the source files. See `design/dashboard-prototype/README.md`.
 
-Screens **not yet designed**: onboarding wizard, menubar dropdown, stack/me, stack/simulate, settings, suggestion popover. Their layouts must follow the same design language captured below.
+Screens **not yet designed**: menubar dropdown, stack/simulate, settings. Their layouts must follow the same design language captured below.
 
 Chat transcript at `design/dashboard-prototype/chats/chat1.md` records the intent: "Dense, data-rich, keyboard-driven (Linear-ish)" with "Realistic engineer names + real-sounding repos/tasks."
 
@@ -129,6 +129,11 @@ Initials in a 4px-rounded square; mono font; tint per teammate seeded from a fix
 
 Visual specs locked. SwiftUI names suggested; final naming follows the SwiftUI conventions of `swiftui-expert-skill`.
 
+### Onboarding sign-in card
+- First launch shows a single centered WorkOS device sign-in card using the same panel, border, 8px card radius, IBM Plex, and coral primary button tokens as the dashboard shell.
+- Before authorization starts, the primary action reads "Sign in". After the device-code request succeeds, the card shows the mono `user_code`, the verification URL, an `Open in browser` primary button, and a small spinner while polling.
+- Expired sessions reuse this card with the message "Session expired. Sign in again to continue." Sign-out routes back to this same view after clearing Keychain.
+
 ### Score chip — `Score(value: Int)`
 - 30px min width, mono, `padding: 1px 6px`, radius 4.
 - Thresholds (binding): `≥80` → `good`, `60–79` → `warn`, `<60` → `bad`.
@@ -180,6 +185,17 @@ Row layout: `52px (time) · 20px (kind chip) · 1fr (body: bold label + mono det
 - White panel, bordered, header in 11.5px weight-600 t1 with a mono count chip on the right.
 - Each item has title (12px t1), meta line (mono 10.5px t3 with `·` separators), and optional action buttons.
 - Suggestion item primary action wording is **"Copy to clipboard"** — never "Replace" (binds `ARCHITECTURE.md` §6 UX answers).
+
+### Suggestion popover
+- Native macOS notification, not an in-window card. Title is "Iter suggestion"; body is the refined prompt preview capped near 120 characters.
+- Actions are ordered: **"Copy to clipboard"**, "Dismiss", "Suppress this pattern". The copy action writes `refined_prompt` to the pasteboard and performs no terminal automation.
+- Notification clicks open a compact floating panel using the same panel background, mono prompt text, rationale, and up to three evidence rows. It auto-clears after 8s if untouched.
+
+### Stack / Me
+- Main pane uses the existing dense dashboard shell: editable stack name, status pill, read-only harness chips, skills rows, doc reference rows, notes textarea, and compact Save/Share actions.
+- Harness chips keep the existing tint palette; detected harnesses use dashed 1px borders, explicit harnesses use solid tinted 1px borders.
+- Share sheet uses the same panel token and lists file references as checkboxes before the Whole team and Specific teammate actions. Deselecting a file reference removes it from the share payload.
+- The right rail swaps the generic suggestion cards for share grants plus Shared with me cards using existing avatar and rail-card tokens.
 
 ### Buttons (`.btn`, `.btn.primary`)
 - 22px tall, sans, 11px text, 5px radius.

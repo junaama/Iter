@@ -14,6 +14,11 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/google/uuid"
+	"github.com/iter-dev/iter/internal/denylist"
+	"github.com/iter-dev/iter/internal/suggest"
+	"github.com/iter-dev/iter/pkg/contracts"
 )
 
 const DefaultSocketName = "daemon.sock"
@@ -33,10 +38,12 @@ type Server struct {
 }
 
 type State struct {
-	mu            sync.RWMutex
-	paused        bool
-	lastSessionAt *time.Time
-	capturedToday int
+	mu                    sync.RWMutex
+	paused                bool
+	lastSessionAt         *time.Time
+	capturedToday         int
+	pendingSuggestions    []localSuggestion
+	suppressedSuggestions map[string]struct{}
 }
 
 type Status struct {
@@ -47,14 +54,32 @@ type Status struct {
 }
 
 type request struct {
-	ID     string `json:"id"`
-	Method string `json:"method"`
+	ID     string          `json:"id"`
+	Method string          `json:"method"`
+	Params json.RawMessage `json:"params,omitempty"`
 }
 
 type response struct {
 	ID     string         `json:"id"`
 	Result map[string]any `json:"result,omitempty"`
 	Error  string         `json:"error,omitempty"`
+}
+
+type localSuggestion struct {
+	ID            string
+	SessionID     string
+	Action        contracts.Action
+	SuggestionID  *string
+	RefinedPrompt string
+	Rationale     *string
+	Confidence    float64
+	Evidence      []contracts.SuggestEvidence
+	CreatedAt     time.Time
+}
+
+type suppressPatternParams struct {
+	RefinedPrompt string `json:"refined_prompt"`
+	SuggestionID  string `json:"suggestion_id,omitempty"`
 }
 
 func NewServer(cfg Config) (*Server, error) {
@@ -166,9 +191,112 @@ func (s *Server) dispatch(req request) response {
 	case "resume":
 		s.state.SetPaused(false)
 		return response{ID: req.ID, Result: map[string]any{"paused": false}}
+	case "suggestion.available":
+		return response{ID: req.ID, Result: s.nextSuggestionResult()}
+	case "suggestion.suppress_pattern":
+		return s.suppressPattern(req)
 	default:
 		return response{ID: req.ID, Error: "unknown_method"}
 	}
+}
+
+func (s *Server) HandleSuggestionAvailable(sessionID uuid.UUID, resp contracts.SuggestResponse) {
+	if resp.NoSuggestionReason != nil {
+		s.logger.Info("suggestion_noop",
+			"session_id", sessionID.String(),
+			"reason", string(*resp.NoSuggestionReason))
+		return
+	}
+	if resp.RefinedPrompt == nil {
+		s.logger.Info("suggestion_noop",
+			"session_id", sessionID.String(),
+			"reason", "missing_refined_prompt")
+		return
+	}
+
+	action, refined := suggest.SuggestionAction(resp.Confidence, *resp.RefinedPrompt)
+	if action == contracts.ActionSuppress || strings.TrimSpace(refined) == "" {
+		s.logger.Info("suggestion_noop",
+			"session_id", sessionID.String(),
+			"reason", "suppressed_by_decision_function")
+		return
+	}
+	if s.state.IsSuggestionSuppressed(refined) {
+		s.logger.Info("suggestion_suppressed_by_pattern", "session_id", sessionID.String())
+		return
+	}
+	if hit, patternID := denylist.Contains(refined); hit {
+		s.logger.Warn("denylist_hit",
+			"pattern_id", patternID,
+			"session_id", sessionID.String())
+		return
+	}
+
+	var suggestionID *string
+	if resp.SuggestionID != nil && *resp.SuggestionID != uuid.Nil {
+		id := resp.SuggestionID.String()
+		suggestionID = &id
+	}
+	s.state.EnqueueSuggestion(localSuggestion{
+		ID:            uuid.NewString(),
+		SessionID:     sessionID.String(),
+		Action:        action,
+		SuggestionID:  suggestionID,
+		RefinedPrompt: refined,
+		Rationale:     resp.Rationale,
+		Confidence:    resp.Confidence,
+		Evidence:      resp.Evidence,
+		CreatedAt:     time.Now().UTC(),
+	})
+}
+
+func (s *Server) nextSuggestionResult() map[string]any {
+	suggestion, ok := s.state.PopSuggestion()
+	if !ok {
+		return map[string]any{"available": false}
+	}
+	evidence := suggestion.Evidence
+	if evidence == nil {
+		evidence = []contracts.SuggestEvidence{}
+	}
+	var suggestionID any
+	if suggestion.SuggestionID != nil {
+		suggestionID = *suggestion.SuggestionID
+	}
+	var rationale any
+	if suggestion.Rationale != nil {
+		rationale = *suggestion.Rationale
+	}
+	return map[string]any{
+		"available":      true,
+		"id":             suggestion.ID,
+		"session_id":     suggestion.SessionID,
+		"action":         string(suggestion.Action),
+		"suggestion_id":  suggestionID,
+		"refined_prompt": suggestion.RefinedPrompt,
+		"rationale":      rationale,
+		"confidence":     suggestion.Confidence,
+		"evidence":       evidence,
+		"created_at":     suggestion.CreatedAt,
+	}
+}
+
+func (s *Server) suppressPattern(req request) response {
+	var params suppressPatternParams
+	if len(req.Params) == 0 || json.Unmarshal(req.Params, &params) != nil {
+		return response{ID: req.ID, Error: "invalid_params"}
+	}
+	if !s.state.SuppressSuggestion(params.RefinedPrompt) {
+		return response{ID: req.ID, Error: "invalid_params"}
+	}
+	s.logger.Info("suggestion_suppress_endpoint_missing",
+		"suggestion_id", params.SuggestionID,
+		"backend_endpoint", "not_implemented")
+	return response{ID: req.ID, Result: map[string]any{
+		"suppressed":        true,
+		"backend_endpoint":  "not_implemented",
+		"persisted_locally": true,
+	}}
 }
 
 func (s *State) Status() Status {
@@ -186,6 +314,68 @@ func (s *State) SetPaused(paused bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.paused = paused
+}
+
+func (s *State) EnqueueSuggestion(suggestion localSuggestion) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.isSuggestionSuppressedLocked(suggestion.RefinedPrompt) {
+		return
+	}
+	s.pendingSuggestions = append(s.pendingSuggestions, suggestion)
+}
+
+func (s *State) PopSuggestion() (localSuggestion, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(s.pendingSuggestions) == 0 {
+		return localSuggestion{}, false
+	}
+	suggestion := s.pendingSuggestions[0]
+	copy(s.pendingSuggestions, s.pendingSuggestions[1:])
+	s.pendingSuggestions = s.pendingSuggestions[:len(s.pendingSuggestions)-1]
+	return suggestion, true
+}
+
+func (s *State) SuppressSuggestion(refinedPrompt string) bool {
+	key := normalizeSuggestionPrompt(refinedPrompt)
+	if key == "" {
+		return false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.suppressedSuggestions == nil {
+		s.suppressedSuggestions = make(map[string]struct{})
+	}
+	s.suppressedSuggestions[key] = struct{}{}
+	filtered := s.pendingSuggestions[:0]
+	for _, suggestion := range s.pendingSuggestions {
+		if normalizeSuggestionPrompt(suggestion.RefinedPrompt) == key {
+			continue
+		}
+		filtered = append(filtered, suggestion)
+	}
+	s.pendingSuggestions = filtered
+	return true
+}
+
+func (s *State) IsSuggestionSuppressed(refinedPrompt string) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.isSuggestionSuppressedLocked(refinedPrompt)
+}
+
+func (s *State) isSuggestionSuppressedLocked(refinedPrompt string) bool {
+	key := normalizeSuggestionPrompt(refinedPrompt)
+	if key == "" || s.suppressedSuggestions == nil {
+		return false
+	}
+	_, ok := s.suppressedSuggestions[key]
+	return ok
+}
+
+func normalizeSuggestionPrompt(refinedPrompt string) string {
+	return strings.ToLower(strings.Join(strings.Fields(refinedPrompt), " "))
 }
 
 func removeStaleSocket(path string) error {

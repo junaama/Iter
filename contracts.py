@@ -167,6 +167,38 @@ class SuggestResponse(BaseModel):
         return v
 
 
+class DaemonSuggestionAvailableResponse(BaseModel):
+    """Unix-socket IPC response for the Mac app's `suggestion.available` poll."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    available: bool
+    id: Optional[str] = None
+    session_id: Optional[UUID] = None
+    action: Optional[SuggestionAction] = None
+    suggestion_id: Optional[UUID] = None
+    refined_prompt: Optional[str] = None
+    rationale: Optional[str] = None
+    confidence: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    evidence: list[SuggestEvidence] = Field(default_factory=list)
+    created_at: Optional[datetime] = None
+
+
+class DaemonSuppressPatternRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    refined_prompt: str = Field(min_length=1)
+    suggestion_id: Optional[UUID] = None
+
+
+class DaemonSuppressPatternResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    suppressed: bool
+    backend_endpoint: Literal["not_implemented"]
+    persisted_locally: bool
+
+
 def suggestion_action(confidence: float, refined_prompt: Optional[str]) -> SuggestionAction:
     """Pure decision function. Reflects locked thresholds.
     Clients (skill.md handler, post-prompt monitor) call this to decide UI behavior."""

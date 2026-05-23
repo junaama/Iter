@@ -21,6 +21,7 @@ final class DaemonClient {
     private let socketPath: String
     private let appVersion: String
     private var monitorTask: Task<Void, Never>?
+    private var suggestionTask: Task<Void, Never>?
 
     init(
         socketPath: String = DaemonClient.defaultSocketPath(),
@@ -32,7 +33,14 @@ final class DaemonClient {
 
     func start() {
         guard monitorTask == nil else { return }
+        SuggestionNotificationPresenter.shared.configure { [weak self] suggestion in
+            await self?.suppressPattern(for: suggestion)
+        }
+        Task {
+            await SuggestionNotificationPresenter.shared.prepare()
+        }
         monitorTask = Task { await monitor() }
+        suggestionTask = Task { await watchSuggestions() }
     }
 
     func pause() {
@@ -82,6 +90,23 @@ final class DaemonClient {
         }
     }
 
+    private func watchSuggestions() async {
+        var backoff: TimeInterval = 0.25
+        while !Task.isCancelled {
+            do {
+                let result = try await request("suggestion.available")
+                if let suggestion = IterSuggestion(result: result) {
+                    await SuggestionNotificationPresenter.shared.present(suggestion)
+                }
+                backoff = 0.25
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+            } catch {
+                try? await Task.sleep(nanoseconds: UInt64(backoff * 1_000_000_000))
+                backoff = min(backoff * 2, 2)
+            }
+        }
+    }
+
     private func sendControl(_ method: String) async {
         do {
             _ = try await request(method)
@@ -95,18 +120,40 @@ final class DaemonClient {
         }
     }
 
-    private func request(_ method: String) async throws -> [String: Any] {
+    private func suppressPattern(for suggestion: IterSuggestion) async {
+        var params: [String: Any] = [
+            "refined_prompt": suggestion.refinedPrompt
+        ]
+        if let suggestionID = suggestion.suggestionID {
+            params["suggestion_id"] = suggestionID
+        }
+        do {
+            _ = try await request("suggestion.suppress_pattern", params: params)
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
+    private func request(_ method: String, params: [String: Any]? = nil) async throws -> [String: Any] {
         let socketPath = socketPath
         return try await Task.detached(priority: .utility) {
-            try Self.performRequest(method: method, socketPath: socketPath)
+            try Self.performRequest(method: method, params: params, socketPath: socketPath)
         }.value
     }
 
-    nonisolated private static func performRequest(method: String, socketPath: String) throws -> [String: Any] {
+    nonisolated private static func performRequest(
+        method: String,
+        params: [String: Any]? = nil,
+        socketPath: String
+    ) throws -> [String: Any] {
         let descriptor = try openSocket(at: socketPath)
         defer { Darwin.close(descriptor) }
+        var request: [String: Any] = ["id": UUID().uuidString, "method": method]
+        if let params {
+            request["params"] = params
+        }
         let payload = try JSONSerialization.data(
-            withJSONObject: ["id": UUID().uuidString, "method": method],
+            withJSONObject: request,
             options: []
         ) + Data([0x0A])
         try writePayload(payload, to: descriptor)

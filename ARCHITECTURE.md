@@ -163,10 +163,10 @@ No GraphQL, no gRPC, no SSE streaming, no public API, no NL search across sessio
 | Method | Path | Purpose |
 |---|---|---|
 | POST | `/v1/suggest` | Latency-critical prompt refinement. |
-| GET | `/v1/stack/me` | Return the caller's saved stack. |
+| GET | `/v1/stack/me` | Return the caller's saved stack plus share grants; empty/404 means render detected draft locally until explicit save. |
 | GET | `/v1/stack/:user` | Return a teammate's shared stack (auth + share check). |
 | POST | `/v1/stack` | Upsert the caller's stack. |
-| POST | `/v1/stack/:id/share` | Share a stack with team or specific user. |
+| POST | `/v1/stack/:id/share` | Share a stack with team or specific user; request may include the selected file references to share. |
 | GET | `/v1/sessions/:id` | Fetch one session (audit/debug). |
 | GET | `/v1/sessions?filter=...` | Search/filter sessions visible to the caller. |
 | GET | `/v1/scores/:session_id` | Score detail + rationale. |
@@ -181,12 +181,12 @@ Request includes `session_context` with `harness`, `model`, `effort` (one of `lo
 ### Confidence thresholds (locked)
 - Confidence < 0.50: suppress. Do not surface.
 - Confidence 0.50–0.80: advisory. Surface as a suggestion the user can apply.
-- Confidence ≥ 0.80: replace. Skill.md may replace the user's prompt outright.
+- Confidence ≥ 0.80: replace. Surface as a clipboard-ready replacement; never inject into a terminal directly.
 
 Clients call a pure decision function (`suggestion_action(confidence, refined_prompt)`) to decide UI behavior. The thresholds live in one place: `contracts.py`.
 
 ### Auth
-WorkOS-issued bearer tokens. Tokens carry `tenant_id` claim. Stored in macOS Keychain on the user's machine. Device-code OAuth flow on `iter login`; refresh on expiry. SSO/SAML available via WorkOS when an enterprise needs it.
+WorkOS-issued bearer tokens. Tokens carry `tenant_id` claim. Stored in macOS Keychain on the user's machine under service `dev.iter.IterApp` with accounts `access_token`, `refresh_token`, and `id_token`; refresh tokens use device-only after-first-unlock accessibility. Device-code OAuth flow on `iter login` and first app launch; refresh starts 60s before expiry and 401 responses retry once after refresh. SSO/SAML available via WorkOS when an enterprise needs it.
 
 ### Versioning + idempotency + rate limits
 - Versioning prefix: `/v1/`. When `/v2/` ships, both run for at least 6 months.
@@ -207,13 +207,13 @@ SwiftUI native Mac app. Native SwiftUI components, no third-party UI library. Se
 6. **Stack — Me** — harnesses chips, skills list, doc references, notes textarea, save button, share grants list.
 7. **Stack — Simulate teammate** — read-only pills showing the teammate's stack composition. "Use stack in directory" opens a new git worktree in a chosen directory as a simulation sandbox; this is not a runtime environment switch.
 8. **Settings** — account, tenant, capture toggles per harness, retention info (read-only), redaction rules preview, data export, account deletion, notification toggle.
-9. **(Transient) Suggestion popover** — native macOS notification with actions "Copy to clipboard," "Dismiss," "Suppress this pattern." Auto-dismiss after 8s. Never injects into a terminal directly; clipboard only.
+9. **(Transient) Suggestion popover** — native macOS notification with actions "Copy to clipboard," "Dismiss," "Suppress this pattern." Auto-dismiss after 8s. Never injects into a terminal directly; clipboard only. Clicking the notification opens a tiny native panel with rationale and evidence.
 
 ### Anti-screens (out of v1)
 No NL search across team sessions. No public profile pages. No leaderboard as a primary feature. No in-app editing of CLAUDE.md / AGENTS.md / skill.md. No in-app billing or tenant admin (separate web admin on iter.dev).
 
 ### Real-time behavior
-- Suggestion popover: synchronous response from `/v1/suggest`, no SSE.
+- Suggestion popover: `/v1/suggest` produces a `suggestion.available` cloud WebSocket push; the daemon applies the shared decision function, suppresses deny-list hits, queues the notice, and exposes it to the Mac app through the Unix-socket `suggestion.available` IPC method. No SSE.
 - Menubar status: polled from local daemon every 5s.
 - Dashboard: fetch on mount, refetch on focus, manual refresh button.
 - Daemon ↔ cloud trace ingest: real-time via WebSocket; user does not see this directly.
