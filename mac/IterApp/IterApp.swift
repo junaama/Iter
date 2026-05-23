@@ -4,14 +4,17 @@ import SwiftUI
 struct IterApp: App {
     @State private var themeStore = ThemeStore()
     @State private var daemonClient = DaemonClient()
+    @State private var sessionStore = SessionStore()
 
     var body: some Scene {
         WindowGroup("iter — Workspace") {
-            WorkspaceView()
+            RootSessionView()
                 .environment(themeStore)
                 .environment(daemonClient)
+                .environment(sessionStore)
                 .preferredColorScheme(themeStore.preferredColorScheme)
                 .task {
+                    sessionStore.load()
                     daemonClient.start()
                 }
         }

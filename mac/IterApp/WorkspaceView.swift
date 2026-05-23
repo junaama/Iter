@@ -94,6 +94,7 @@ struct WorkspaceView: View {
     @State private var route: Route = .me
     @State private var layoutStore = LayoutVariantStore()
     @State private var dashboardMeStore = DashboardMeStore()
+    @State private var stackStore = StackStore()
     @State private var searchText = ""
     @State private var showsSearchPopover = false
     @FocusState private var searchFocused: Bool
@@ -112,7 +113,7 @@ struct WorkspaceView: View {
                 )
 
                 HStack(spacing: 0) {
-                    SidebarView(route: $route)
+                    SidebarView(route: $route, stackStore: stackStore)
 
                     VStack(spacing: 0) {
                         SubbarView(
@@ -127,14 +128,19 @@ struct WorkspaceView: View {
                             MainPaneView(
                                 route: route,
                                 layoutVariant: layoutStore.selected,
-                                dashboardMeStore: dashboardMeStore
+                                dashboardMeStore: dashboardMeStore,
+                                stackStore: stackStore
                             ) { route in
                                 self.route = route
                             }
 
                             if route.showsRail {
-                                RightRailView(route: route, dashboard: dashboardMeStore.dashboard)
-                                    .frame(width: route.railWidth)
+                                RightRailView(
+                                    route: route,
+                                    dashboard: dashboardMeStore.dashboard,
+                                    stackStore: stackStore
+                                )
+                                .frame(width: route.railWidth)
                             }
                         }
                     }
@@ -338,6 +344,7 @@ private struct SidebarView: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(DaemonClient.self) private var daemonClient
     @Binding var route: Route
+    let stackStore: StackStore
 
     private let navItems: [SidebarNavItem] = [
         SidebarNavItem(route: .me, title: "Me", symbol: "person", count: "47"),
@@ -365,7 +372,7 @@ private struct SidebarView: View {
             SidebarSectionTitle(title: "Active stack", action: "edit")
                 .padding(.top, IterSpacing.gapLarge)
 
-            FlowPillsView(titles: ["Codex", "OpenCode", "+SwiftUI", "+2 skills"])
+            FlowPillsView(titles: stackStore.sidebarHarnessLabels)
                 .padding(.horizontal, IterSpacing.gapSmall)
                 .padding(.top, IterSpacing.gapSmall)
 
@@ -751,6 +758,7 @@ private struct MainPaneView: View {
     let route: Route
     let layoutVariant: LayoutVariant
     let dashboardMeStore: DashboardMeStore
+    let stackStore: StackStore
     let onNavigate: (Route) -> Void
 
     var body: some View {
@@ -760,6 +768,8 @@ private struct MainPaneView: View {
                 onSelectSession: { id in onNavigate(.sessionDetail(id: id)) },
                 onViewAll: { onNavigate(.sessions) }
             )
+        } else if route.matchesTopLevel(.stack) {
+            StackMeView(store: stackStore)
         } else {
             stubView
         }
@@ -805,26 +815,31 @@ private struct RightRailView: View {
 
     let route: Route
     let dashboard: DashboardMeResponse?
+    let stackStore: StackStore
 
     var body: some View {
-        VStack(alignment: .leading, spacing: IterSpacing.gapMedium) {
-            if route.matchesTopLevel(.me) {
-                MeRailCards(dashboard: dashboard)
-            } else {
-                RailCardView(title: "Refinements", count: "3", bodyText: "Prompt improvements you contributed.")
-                RailCardView(
-                    title: route.title == "Team" ? "Active now" : "Suggestions waiting",
-                    count: route.title == "Team" ? "4" : "2",
-                    bodyText: "Contextual rail cards arrive in later data slices."
-                )
+        if route.matchesTopLevel(.stack) {
+            StackRightRailView(store: stackStore)
+        } else {
+            VStack(alignment: .leading, spacing: IterSpacing.gapMedium) {
+                if route.matchesTopLevel(.me) {
+                    MeRailCards(dashboard: dashboard)
+                } else {
+                    RailCardView(title: "Refinements", count: "3", bodyText: "Prompt improvements you contributed.")
+                    RailCardView(
+                        title: route.title == "Team" ? "Active now" : "Suggestions waiting",
+                        count: route.title == "Team" ? "4" : "2",
+                        bodyText: "Contextual rail cards arrive in later data slices."
+                    )
+                }
+                Spacer()
             }
-            Spacer()
-        }
-        .padding(IterSpacing.gapMedium)
-        .frame(maxHeight: .infinity, alignment: .topLeading)
-        .background(Color.iterRail(for: colorScheme))
-        .overlay(alignment: .leading) {
-            DividerLine(axis: .vertical)
+            .padding(IterSpacing.gapMedium)
+            .frame(maxHeight: .infinity, alignment: .topLeading)
+            .background(Color.iterRail(for: colorScheme))
+            .overlay(alignment: .leading) {
+                DividerLine(axis: .vertical)
+            }
         }
     }
 }

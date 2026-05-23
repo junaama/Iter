@@ -65,6 +65,8 @@ The complete decision log from the system design session. Every line is a bindin
 - **Idempotency-Key header**: required on all POST endpoints.
 - **No GraphQL, gRPC, SSE streaming, public API, or NL search in v1.**
 
+- **Mac/CLI device-code auth (issue 066)**: both the Swift app and `cmd/iter login` use WorkOS CLI Auth's device-code grant. Defaults target AuthKit User Management endpoints (`/user_management/authorize/device` and `/user_management/authenticate`), while `ITER_WORKOS_DEVICE_AUTH_URL` and `ITER_WORKOS_TOKEN_URL` can point staging at Connect/AuthKit-domain OAuth endpoints without code changes. Tokens are shared through macOS Keychain service `dev.iter.IterApp` with accounts `access_token`, `refresh_token`, and `id_token`; the Swift app and cgo-backed darwin CLI write the refresh token with `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`. `SessionStore` decodes `sub`, `tenant_id`, `exp`, and display claims once on load/save, refreshes 60 seconds before expiry, and clears Keychain on refresh failure so the app returns to sign-in.
+
 ## Phase 6: UI/UX
 - **Mac app shell**: SwiftUI native.
 - **Component library**: native SwiftUI components.

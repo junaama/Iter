@@ -37,6 +37,10 @@
 		1A0000700000000000000003 /* DashboardMeStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000700000000000000013 /* DashboardMeStore.swift */; };
 		1A0000700000000000000004 /* DashboardMeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000700000000000000014 /* DashboardMeView.swift */; };
 		1A0000760000000000000001 /* SuggestionNotifications.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000760000000000000011 /* SuggestionNotifications.swift */; };
+		1A0000740000000000000001 /* StackAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000740000000000000011 /* StackAPIClient.swift */; };
+		1A0000740000000000000002 /* StackMeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000740000000000000012 /* StackMeView.swift */; };
+		1A0000740000000000000003 /* StackModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000740000000000000013 /* StackModels.swift */; };
+		1A0000740000000000000004 /* StackStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000740000000000000014 /* StackStore.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -72,6 +76,10 @@
 		1A0000700000000000000013 /* DashboardMeStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardMeStore.swift; sourceTree = "<group>"; };
 		1A0000700000000000000014 /* DashboardMeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardMeView.swift; sourceTree = "<group>"; };
 		1A0000760000000000000011 /* SuggestionNotifications.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuggestionNotifications.swift; sourceTree = "<group>"; };
+		1A0000740000000000000011 /* StackAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StackAPIClient.swift; sourceTree = "<group>"; };
+		1A0000740000000000000012 /* StackMeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StackMeView.swift; sourceTree = "<group>"; };
+		1A0000740000000000000013 /* StackModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StackModels.swift; sourceTree = "<group>"; };
+		1A0000740000000000000014 /* StackStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StackStore.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -103,6 +111,7 @@
 				1A0000700000000000000031 /* Dashboard */,
 				1A0000680000000000000030 /* Daemon */,
 				1A0000760000000000000030 /* Suggestions */,
+				1A0000740000000000000030 /* Stack */,
 				1A0000650000000000000030 /* Components */,
 				1A0000010000000000000032 /* DesignSystem */,
 				1A0000010000000000000033 /* Resources */,
@@ -177,6 +186,17 @@
 				1A0000760000000000000011 /* SuggestionNotifications.swift */,
 			);
 			path = Suggestions;
+			sourceTree = "<group>";
+		};
+		1A0000740000000000000030 /* Stack */ = {
+			isa = PBXGroup;
+			children = (
+				1A0000740000000000000011 /* StackAPIClient.swift */,
+				1A0000740000000000000012 /* StackMeView.swift */,
+				1A0000740000000000000013 /* StackModels.swift */,
+				1A0000740000000000000014 /* StackStore.swift */,
+			);
+			path = Stack;
 			sourceTree = "<group>";
 		};
 		1A0000010000000000000033 /* Resources */ = {
@@ -293,6 +313,10 @@
 				1A0000700000000000000003 /* DashboardMeStore.swift in Sources */,
 				1A0000700000000000000004 /* DashboardMeView.swift in Sources */,
 				1A0000760000000000000001 /* SuggestionNotifications.swift in Sources */,
+				1A0000740000000000000001 /* StackAPIClient.swift in Sources */,
+				1A0000740000000000000002 /* StackMeView.swift in Sources */,
+				1A0000740000000000000003 /* StackModels.swift in Sources */,
+				1A0000740000000000000004 /* StackStore.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
