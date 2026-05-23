@@ -21,6 +21,7 @@ final class SessionStore {
     var accessToken: String?
     var tenantId: String?
     var userId: String?
+    var role: String?
     var expiresAt: Date?
     var displayName: String?
     var status: SessionStatus = .loading
@@ -148,6 +149,7 @@ final class SessionStore {
         refreshToken = tokens.refreshToken
         tenantId = accessClaims.tenantId
         userId = accessClaims.subject
+        role = accessClaims.roles.first
         expiresAt = accessClaims.expiresAt
         displayName = accessClaims.displayName ?? idClaims?.displayName ?? accessClaims.subject
         status = .signedIn
@@ -171,6 +173,7 @@ final class SessionStore {
         refreshToken = nil
         tenantId = nil
         userId = nil
+        role = nil
         expiresAt = nil
         displayName = nil
         deviceAuthorization = nil
@@ -183,6 +186,7 @@ struct JWTClaims: Equatable {
     let tenantId: String?
     let expiresAt: Date
     let displayName: String?
+    let roles: [String]
 
     static func decode(_ jwt: String) throws -> JWTClaims {
         let parts = jwt.split(separator: ".")
@@ -202,12 +206,16 @@ struct JWTClaims: Equatable {
         let displayName = object["name"] as? String
             ?? object["email"] as? String
             ?? object["preferred_username"] as? String
+        let roles = (object["roles"] as? [String])
+            ?? (object["roles"] as? [Any])?.compactMap { $0 as? String }
+            ?? []
 
         return JWTClaims(
             subject: subject,
             tenantId: object["tenant_id"] as? String,
             expiresAt: expiresAt,
-            displayName: displayName
+            displayName: displayName,
+            roles: roles
         )
     }
 

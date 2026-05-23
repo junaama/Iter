@@ -42,6 +42,9 @@
 		1A0000700000000000000002 /* DashboardMeModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000700000000000000012 /* DashboardMeModels.swift */; };
 		1A0000700000000000000003 /* DashboardMeStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000700000000000000013 /* DashboardMeStore.swift */; };
 		1A0000700000000000000004 /* DashboardMeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000700000000000000014 /* DashboardMeView.swift */; };
+		1A0000700000000000000005 /* DashboardTeamModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000700000000000000015 /* DashboardTeamModels.swift */; };
+		1A0000700000000000000006 /* DashboardTeamStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000700000000000000016 /* DashboardTeamStore.swift */; };
+		1A0000700000000000000007 /* DashboardTeamView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000700000000000000017 /* DashboardTeamView.swift */; };
 		1A0000720000000000000001 /* SessionDetailClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000720000000000000011 /* SessionDetailClient.swift */; };
 		1A0000720000000000000002 /* SessionDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000720000000000000012 /* SessionDetailView.swift */; };
 		1A0000760000000000000001 /* SuggestionNotifications.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000760000000000000011 /* SuggestionNotifications.swift */; };
@@ -94,6 +97,9 @@
 		1A0000700000000000000012 /* DashboardMeModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardMeModels.swift; sourceTree = "<group>"; };
 		1A0000700000000000000013 /* DashboardMeStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardMeStore.swift; sourceTree = "<group>"; };
 		1A0000700000000000000014 /* DashboardMeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardMeView.swift; sourceTree = "<group>"; };
+		1A0000700000000000000015 /* DashboardTeamModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardTeamModels.swift; sourceTree = "<group>"; };
+		1A0000700000000000000016 /* DashboardTeamStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardTeamStore.swift; sourceTree = "<group>"; };
+		1A0000700000000000000017 /* DashboardTeamView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardTeamView.swift; sourceTree = "<group>"; };
 		1A0000720000000000000011 /* SessionDetailClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionDetailClient.swift; sourceTree = "<group>"; };
 		1A0000720000000000000012 /* SessionDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionDetailView.swift; sourceTree = "<group>"; };
 		1A0000760000000000000011 /* SuggestionNotifications.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuggestionNotifications.swift; sourceTree = "<group>"; };
@@ -213,6 +219,9 @@
 				1A0000700000000000000012 /* DashboardMeModels.swift */,
 				1A0000700000000000000013 /* DashboardMeStore.swift */,
 				1A0000700000000000000014 /* DashboardMeView.swift */,
+				1A0000700000000000000015 /* DashboardTeamModels.swift */,
+				1A0000700000000000000016 /* DashboardTeamStore.swift */,
+				1A0000700000000000000017 /* DashboardTeamView.swift */,
 			);
 			path = Dashboard;
 			sourceTree = "<group>";
@@ -381,6 +390,9 @@
 				1A0000700000000000000002 /* DashboardMeModels.swift in Sources */,
 				1A0000700000000000000003 /* DashboardMeStore.swift in Sources */,
 				1A0000700000000000000004 /* DashboardMeView.swift in Sources */,
+				1A0000700000000000000005 /* DashboardTeamModels.swift in Sources */,
+				1A0000700000000000000006 /* DashboardTeamStore.swift in Sources */,
+				1A0000700000000000000007 /* DashboardTeamView.swift in Sources */,
 				1A0000720000000000000001 /* SessionDetailClient.swift in Sources */,
 				1A0000720000000000000002 /* SessionDetailView.swift in Sources */,
 				1A0000760000000000000001 /* SuggestionNotifications.swift in Sources */,

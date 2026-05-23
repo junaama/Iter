@@ -1027,6 +1027,7 @@ private struct RightRailView: View {
 
     let route: Route
     let dashboard: DashboardMeResponse?
+    let teamDashboard: DashboardTeamResponse?
     let stackStore: StackStore
     let onNavigate: (Route) -> Void
 
@@ -1039,6 +1040,8 @@ private struct RightRailView: View {
             VStack(alignment: .leading, spacing: IterSpacing.gapMedium) {
                 if route.matchesTopLevel(.me) {
                     MeRailCards(dashboard: dashboard, stackStore: stackStore)
+                } else if route.matchesTopLevel(.team) {
+                    TeamRailCards(dashboard: teamDashboard)
                 }
                 Spacer()
             }

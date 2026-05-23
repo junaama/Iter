@@ -6,6 +6,7 @@ struct SessionTable: View {
     let sessions: [SessionListItem]
     var emptyMessage = "No sessions"
     var isLoading = false
+    var showsAuthorColumn = false
     var onSelect: (SessionListItem) -> Void = { _ in }
 
     var body: some View {
@@ -20,7 +21,7 @@ struct SessionTable: View {
                 emptyRow
             } else {
                 ForEach(sessions) { session in
-                    SessionTableRow(session: session) {
+                    SessionTableRow(session: session, showsAuthorColumn: showsAuthorColumn) {
                         onSelect(session)
                     }
                 }
@@ -37,7 +38,7 @@ struct SessionTable: View {
     private var header: some View {
         Grid(horizontalSpacing: 10, verticalSpacing: 0) {
             GridRow {
-                ForEach(["Started", "Repo·Task", "Harness", "Dur", "Score", "Status", "Accepted"], id: \.self) {
+                ForEach(headers, id: \.self) {
                     Text(verbatim: $0)
                         .font(IterFont.monoSmall)
                         .foregroundStyle(Color.iterTextTertiary(for: colorScheme))
@@ -62,12 +63,19 @@ struct SessionTable: View {
             .foregroundStyle(Color.iterTextTertiary(for: colorScheme))
             .frame(maxWidth: .infinity, minHeight: IterSpacing.rowHeight)
     }
+
+    private var headers: [String] {
+        showsAuthorColumn
+            ? ["Started", "Author", "Repo·Task", "Harness", "Dur", "Score", "Status", "Accepted"]
+            : ["Started", "Repo·Task", "Harness", "Dur", "Score", "Status", "Accepted"]
+    }
 }
 
 private struct SessionTableRow: View {
     @Environment(\.colorScheme) private var colorScheme
 
     let session: SessionListItem
+    var showsAuthorColumn = false
     let onSelect: () -> Void
 
     var body: some View {
@@ -77,6 +85,15 @@ private struct SessionTableRow: View {
                     Text(verbatim: session.when)
                         .font(IterFont.monoLabel)
                         .foregroundStyle(Color.iterTextSecondary(for: colorScheme))
+
+                    if showsAuthorColumn {
+                        HStack(spacing: 6) {
+                            Avatar(initials: session.authorInitials, seed: session.avatarSeed)
+                            Text(verbatim: session.authorInitials)
+                                .font(IterFont.monoLabel)
+                                .foregroundStyle(Color.iterTextSecondary(for: colorScheme))
+                        }
+                    }
 
                     VStack(alignment: .leading, spacing: 0) {
                         Text(verbatim: session.repo)

@@ -15,6 +15,7 @@ final class IterHTTPClient {
     private let bearerToken: String?
     private let sessionStore: SessionStore?
     private var dashboardMeCache: CacheEntry<DashboardMeResponse>?
+    private var dashboardTeamCache: CacheEntry<DashboardTeamResponse>?
 
     init(
         session: URLSession = .shared,
@@ -44,6 +45,47 @@ final class IterHTTPClient {
         )
         dashboardMeCache = CacheEntry(value: response, fetchedAt: Date())
         return response
+    }
+
+    func dashboardTeam(forceRefresh: Bool = false) async throws -> DashboardTeamResponse {
+        if !forceRefresh,
+           let dashboardTeamCache,
+           Date().timeIntervalSince(dashboardTeamCache.fetchedAt) < Self.dashboardCacheTTL {
+            return dashboardTeamCache.value
+        }
+
+        let response: DashboardTeamResponse = try await get(
+            path: "v1/dashboard/team",
+            queryItems: [
+                URLQueryItem(name: "member_limit", value: "50"),
+                URLQueryItem(name: "pattern_limit", value: "10")
+            ]
+        )
+        dashboardTeamCache = CacheEntry(value: response, fetchedAt: Date())
+        return response
+    }
+
+    func listSessions(limit: Int = 10) async throws -> ListSessionsResponse {
+        try await get(
+            path: "v1/sessions",
+            queryItems: [
+                URLQueryItem(name: "limit", value: "\(limit)")
+            ]
+        )
+    }
+
+    func inviteTeamMember(email: String) async throws {
+        struct InviteRequest: Encodable {
+            let email: String
+        }
+
+        let endpoint = baseURL.appendingPathComponent("v1/team/invites")
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "POST"
+        request.setValue(UUID().uuidString, forHTTPHeaderField: "Idempotency-Key")
+        request.httpBody = try Self.encoder.encode(InviteRequest(email: email))
+        let response = try await data(for: request)
+        try validate(response)
     }
 
     func data(
@@ -152,6 +194,12 @@ final class IterHTTPClient {
             throw DecodingError.dataCorruptedError(in: container, debugDescription: "Invalid ISO8601 date")
         }
         return decoder
+    }
+
+    private static var encoder: JSONEncoder {
+        let encoder = JSONEncoder()
+        encoder.keyEncodingStrategy = .convertToSnakeCase
+        return encoder
     }
 
     private static let fractionalISO8601: ISO8601DateFormatter = {
