@@ -58,6 +58,10 @@ The server reads config from environment variables. The repo already has a `.env
 | `VOYAGE_API_KEY` | for embeddings | Voyage is the only real provider today |
 | `GITHUB_WEBHOOK_SECRET`, `LINEAR_WEBHOOK_SECRET` | for webhooks | Empty → handler returns 401 |
 | `R2_ENDPOINT`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_REGION`, `R2_ARCHIVE_BUCKET`, `R2_ACCOUNT_ID` | for archive cron | All-or-nothing; cron skipped if incomplete |
+| `ITER_API_BASE_URL` | daemon/app dev | Defaults to `http://127.0.0.1:8080`; daemon derives `ws://.../v1/ws` from it |
+| `ITER_API_TOKEN` | daemon ingest | Iter session JWT. If unset on macOS, the daemon tries the Swift app Keychain token (`dev.iter.IterApp` / `access_token`). |
+| `ITER_CAPTURE_DIRS` | daemon ingest | Optional `harness=path` entries separated by `:` on macOS/Linux. Defaults to Claude Code, Codex, Gemini CLI, OpenCode, and Pi session roots. |
+| `ITER_CAPTURE_WAL_PATH` | daemon ingest | SQLite replay WAL path. Defaults to `~/Library/Application Support/Iter/capture.sqlite`. |
 
 Load `.env` into your shell however you prefer (e.g. `set -a; source .env; set +a`).
 
@@ -95,7 +99,13 @@ The daemon binds a Unix socket at `~/Library/Application Support/Iter/daemon.soc
 go run ./cmd/iter-daemon
 ```
 
-Leave it running in its own terminal.
+Leave it running in its own terminal. For local capture, sign in through the Mac app once so the daemon can read the Iter session JWT from Keychain, or export `ITER_API_TOKEN` manually. The daemon polls known harness session directories, stores captured events in a local SQLite WAL, parses JSON/JSONL session files, and publishes normalized `trace.event` messages over `/v1/ws`. WAL rows are marked sent only after the server ACKs the WebSocket frame.
+
+To point capture at a fixture or custom harness directory:
+
+```sh
+ITER_CAPTURE_DIRS="codex=/tmp/iter-codex-sessions" go run ./cmd/iter-daemon
+```
 
 ### LaunchAgent (production-style)
 
@@ -151,9 +161,13 @@ In four shells:
 # 1. DB
 make db-up && make migrate-up
 
+# 1b. Redis
+docker run --rm -p 6379:6379 redis:7-alpine
+
 # 2. Server
 set -a; source .env; set +a
 export DATABASE_URL='postgres://iter:iter@localhost:5433/iter?sslmode=disable'
+export REDIS_URL='redis://localhost:6379'
 make run
 
 # 3. Daemon
@@ -164,6 +178,8 @@ make mac-dev
 ```
 
 Sign in from the Mac app — it uses WorkOS device-code auth against the local server.
+
+After sign-in, granting Accessibility and Full Disk Access lets the daemon read the configured harness directories. Newly discovered JSON/JSONL session files are sent to the server ingest path; Dashboard sessions refresh from the Postgres rows created by the ingest worker.
 
 ---
 

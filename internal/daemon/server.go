@@ -27,6 +27,7 @@ type Config struct {
 	SocketPath string
 	Version    string
 	AppVersion string
+	Capture    CaptureConfig
 	Logger     *slog.Logger
 }
 
@@ -35,6 +36,7 @@ type Server struct {
 	version    string
 	logger     *slog.Logger
 	state      *State
+	capture    CaptureConfig
 }
 
 type State struct {
@@ -115,6 +117,7 @@ func NewServer(cfg Config) (*Server, error) {
 		socketPath: socketPath,
 		version:    version,
 		logger:     logger,
+		capture:    cfg.Capture,
 		state:      &State{idleSince: &idleSince},
 	}, nil
 }
@@ -150,6 +153,12 @@ func (s *Server) Serve(ctx context.Context) error {
 		<-ctx.Done()
 		_ = listener.Close()
 	}()
+	if s.capture.Enabled() {
+		runner := NewCaptureRunner(s.capture, s.state, s.logger)
+		go runner.Run(ctx)
+	} else {
+		s.logger.Info("daemon_capture_disabled", "reason", "missing_api_token_or_url")
+	}
 
 	for {
 		conn, err := listener.Accept()
@@ -364,6 +373,20 @@ func (s *State) SetPaused(paused bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.paused = paused
+}
+
+func (s *State) Paused() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.paused
+}
+
+func (s *State) CaptureEnabled(harness string) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	setting := s.captureSettingLocked(harness)
+	enabled, _ := setting["enabled"].(bool)
+	return enabled
 }
 
 func (s *State) CaptureSettings() []map[string]any {
