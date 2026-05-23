@@ -136,6 +136,45 @@ class AuthSessionResponse(BaseModel):
 
 
 # ============================================================================
+# Account lifecycle: Settings export + account deletion
+# ============================================================================
+
+class AccountExportStatus(str, Enum):
+    PENDING = "pending"
+    READY = "ready"
+    FAILED = "failed"
+
+
+class AccountExportStartResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    export_id: UUID
+    status: AccountExportStatus
+    status_url: str
+    requested_at: datetime
+
+
+class AccountExportStatusResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    export_id: UUID
+    status: AccountExportStatus
+    download_url: Optional[str] = None
+    archive_pointer: Optional[str] = None
+    requested_at: datetime
+    ready_at: Optional[datetime] = None
+    failed_at: Optional[datetime] = None
+    error: Optional[str] = None
+
+
+class AccountDeleteResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    scheduled_deletion_at: datetime
+    cascade_delete_after_days: int = Field(default=7, ge=7)
+
+
+# ============================================================================
 # Local daemon IPC
 # ============================================================================
 

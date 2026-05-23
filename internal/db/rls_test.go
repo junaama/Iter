@@ -55,6 +55,8 @@ var tenantScopedTables = []string{
 	"stack_shares",
 	"archive_pointers",
 	"audit_log",
+	"account_exports",
+	"account_deletions",
 }
 
 // tablesThatCascadeOnTenantDelete is the subset of tenantScopedTables
@@ -70,6 +72,8 @@ var tablesThatCascadeOnTenantDelete = []string{
 	"suggestions",
 	"stacks",
 	"stack_shares",
+	"account_exports",
+	"account_deletions",
 	"tenant_users", // global membership table, also cascades
 }
 
@@ -525,6 +529,22 @@ func seedTwoTenants(ctx context.Context, t *testing.T, super *sql.DB) (string, s
 			tid, userID,
 		); err != nil {
 			t.Fatalf("insert audit_log: %v", err)
+		}
+
+		if _, err := super.ExecContext(ctx,
+			`INSERT INTO account_exports (tenant_id, user_id, status, archive_pointer, requested_at, ready_at)
+			   VALUES ($1, $2, 'ready', 'iter://account_exports/' || gen_random_uuid()::text, now(), now())`,
+			tid, userID,
+		); err != nil {
+			t.Fatalf("insert account_exports: %v", err)
+		}
+
+		if _, err := super.ExecContext(ctx,
+			`INSERT INTO account_deletions (tenant_id, user_id, requested_at, scheduled_for)
+			   VALUES ($1, $2, now(), now() + interval '7 days')`,
+			tid, userID,
+		); err != nil {
+			t.Fatalf("insert account_deletions: %v", err)
 		}
 	}
 

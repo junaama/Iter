@@ -139,6 +139,101 @@ func TestRouter_DashboardTeamRegistered(t *testing.T) {
 	}
 }
 
+func TestRouter_AccountLifecycleRoutesRegistered(t *testing.T) {
+	deps := app.Deps{
+		Logger:       slog.New(slog.NewTextHandler(io.Discard, nil)),
+		BuildVersion: "test",
+	}
+
+	r := api.NewRouter(deps)
+	want := map[string]bool{
+		http.MethodPost + " /v1/account/export":     false,
+		http.MethodGet + " /v1/account/export/{id}": false,
+		http.MethodPost + " /v1/account/delete":     false,
+	}
+	if err := chi.Walk(r, func(method string, route string, _ http.Handler, _ ...func(http.Handler) http.Handler) error {
+		key := method + " " + route
+		if _, ok := want[key]; ok {
+			want[key] = true
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("walk router: %v", err)
+	}
+	for route, found := range want {
+		if !found {
+			t.Fatalf("route not registered: %s", route)
+		}
+	}
+}
+
+func TestRouter_AccountExportRequiresIdempotencyKey(t *testing.T) {
+	tenantID := uuid.New()
+	userID := uuid.New()
+	verifier, token := testVerifierAndToken(t, tenantID, userID)
+	mr := miniredis.RunT(t)
+	rdb := goredis.NewClient(&goredis.Options{Addr: mr.Addr()})
+	defer func() { _ = rdb.Close() }()
+
+	deps := app.Deps{
+		Logger:       slog.New(slog.NewTextHandler(io.Discard, nil)),
+		BuildVersion: "test",
+		Auth:         verifier,
+		Redis:        rdb,
+	}
+
+	r := api.NewRouter(deps)
+	srv := httptest.NewServer(r)
+	defer srv.Close()
+
+	req, err := http.NewRequest(http.MethodPost, srv.URL+"/v1/account/export", strings.NewReader(`{}`))
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("POST /v1/account/export: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusBadRequest {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("want 400 from idempotency middleware, got %d body=%q", resp.StatusCode, string(body))
+	}
+	body, _ := io.ReadAll(resp.Body)
+	if !strings.Contains(string(body), "missing_idempotency_key") {
+		t.Fatalf("body missing idempotency marker: %q", string(body))
+	}
+}
+
+func TestRouter_AccountDeleteRequiresAuth(t *testing.T) {
+	tenantID := uuid.New()
+	userID := uuid.New()
+	verifier, _ := testVerifierAndToken(t, tenantID, userID)
+	deps := app.Deps{
+		Logger:       slog.New(slog.NewTextHandler(io.Discard, nil)),
+		BuildVersion: "test",
+		Auth:         verifier,
+	}
+
+	r := api.NewRouter(deps)
+	srv := httptest.NewServer(r)
+	defer srv.Close()
+
+	resp, err := http.Post(srv.URL+"/v1/account/delete", "application/json", strings.NewReader(`{}`))
+	if err != nil {
+		t.Fatalf("POST /v1/account/delete: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusUnauthorized {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("want 401 invalid_token with missing bearer, got %d body=%q", resp.StatusCode, string(body))
+	}
+}
+
 func TestRouter_SuggestRegisteredBehindIdempotency(t *testing.T) {
 	tenantID := uuid.New()
 	userID := uuid.New()

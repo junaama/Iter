@@ -120,6 +120,9 @@ func NewRouter(deps app.Deps) chi.Router {
 		authed.Get("/v1/sessions/{id}", handler.SessionDetailHandler(deps))
 		authed.Get("/v1/scores/{session_id}", handler.SessionScoresHandler(deps))
 		authed.Get("/v1/sessions", handler.ListSessionsHandler(deps))
+		authed.Post("/v1/account/export", handler.AccountExportStartHandler(deps))
+		authed.Get("/v1/account/export/{id}", handler.AccountExportStatusHandler(deps))
+		authed.Post("/v1/account/delete", handler.AccountDeleteHandler(deps))
 
 		// GET /v1/dashboard/team (issue 039) — team-wide aggregates.
 		// The route-level admin gate runs after auth + tenant context

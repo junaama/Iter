@@ -38,6 +38,7 @@ expected_tables=(
   sessions session_events session_embeddings session_scores
   outcomes suggestions stacks stack_shares
   archive_pointers audit_log
+  account_exports account_deletions
   scoring_batch_runs
   pending_outcomes
 )
@@ -64,6 +65,7 @@ pass "HNSW indexes (m=16, ef_construction=64)"
 rls_tables=(
   sessions session_events session_embeddings session_scores
   outcomes suggestions stacks stack_shares archive_pointers audit_log
+  account_exports account_deletions
 )
 for t in "${rls_tables[@]}"; do
   enabled="$(psql_q "SELECT relrowsecurity FROM pg_class WHERE relname='$t';")"

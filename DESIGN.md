@@ -210,7 +210,7 @@ Row layout: `52px (time) · 20px (kind chip) · 1fr (body: bold label + mono det
 - Sections render as vertical bordered `--radius` panels: Account, Tenant, Capture toggles, Retention info, Redaction rules preview, Data export, Notifications.
 - Per-harness capture rows use the canonical harness tint + mono short-code and round-trip through the local daemon IPC. Tenant-default values must show a source badge; local overrides show `this Mac`.
 - Retention copy is read from the app's `SettingsPolicy.retentionSummary` source instead of duplicating the literal in row components.
-- Account export and deletion show unavailable states until `POST /v1/account/export` and `POST /v1/account/delete` exist. Delete still uses the shared destructive confirmation sheet requiring `DELETE`.
+- Account export calls `POST /v1/account/export`, then polls `GET /v1/account/export/{id}` until the status is `ready` or `failed`. Ready responses expose a download URL or archive pointer. Account deletion calls `POST /v1/account/delete` after the shared destructive confirmation sheet requiring `DELETE`.
 
 ### Buttons (`.btn`, `.btn.primary`)
 - 22px tall, sans, 11px text, 5px radius.

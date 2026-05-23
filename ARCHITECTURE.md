@@ -193,6 +193,10 @@ WorkOS-issued bearer tokens. Tokens carry `tenant_id` claim. Stored in macOS Key
 - Idempotency: `Idempotency-Key` header accepted on all POST endpoints; required for webhook inbound.
 - Rate limits per token: 100 req/min CLI, 600 req/min daemon.
 
+### Account lifecycle API
+- `POST /v1/account/export` creates a tenant-scoped export record for the signed-in user and returns a polling URL. `GET /v1/account/export/{id}` returns `pending`, `ready`, or `failed` plus a download URL or archive pointer when ready. v1 records a durable archive pointer; R2 bundle generation can be layered behind that pointer without changing the Settings contract.
+- `POST /v1/account/delete` soft-disables the signed-in user and records a 7-day cascade-delete schedule for the current tenant. Both POST endpoints require `Idempotency-Key`, authenticated tenant context, and audit entries without raw payloads.
+
 ## 6. UI/UX
 
 ### Shell
@@ -253,7 +257,7 @@ No NL search across team sessions. No public profile pages. No leaderboard as a 
 | macOS permissions revoked mid-session | Daemon detects, pauses capture, surfaces in menubar. |
 | Tenant deleted (admin action) | Cascade-delete; R2 archives purged within 24h; audit log entry. |
 | R2 free-tier ceiling approached | Alert at 80% of storage / Class A / Class B ceilings; archive cron refuses new writes at 95% unless `R2_OVERAGE_OK=true`. Details in `deploy.md` "R2 usage monitoring." |
-| User account deleted | Same as tenant at user scope. Confirmation required. |
+| User account deleted | `POST /v1/account/delete` soft-disables the signed-in user, writes `data_deletion_requested`, then follows the 7-day cascade-delete path at user scope. Confirmation required. |
 | Suggestion contains harmful pattern (`rm -rf`, `DROP TABLE`, `git push --force`) | Deny-list filter blocks; log security event; never surface. |
 | pgvector recall degrades | Weekly recall check on held-out set per tenant; rebuild HNSW when recall < 0.85. |
 
