@@ -5,6 +5,7 @@ struct DashboardMeView: View {
     @Environment(\.colorScheme) private var colorScheme
     @Bindable var store: DashboardMeStore
 
+    let layoutVariant: LayoutVariant
     let onSelectSession: (String) -> Void
     let onViewAll: () -> Void
 
@@ -26,6 +27,7 @@ struct DashboardMeView: View {
                 RecentSessionsSection(
                     count: store.sessionCountLabel,
                     sessions: sessionItems,
+                    layoutVariant: layoutVariant,
                     isLoading: store.dashboard == nil && store.isLoading,
                     emptyMessage: emptyMessage,
                     onViewAll: onViewAll,
@@ -73,6 +75,7 @@ private struct RecentSessionsSection: View {
 
     let count: String
     let sessions: [SessionListItem]
+    let layoutVariant: LayoutVariant
     let isLoading: Bool
     let emptyMessage: String
     let onViewAll: () -> Void
@@ -103,13 +106,55 @@ private struct RecentSessionsSection: View {
                 .buttonStyle(.plain)
             }
 
-            SessionTable(
-                sessions: sessions,
-                emptyMessage: emptyMessage,
-                isLoading: isLoading
-            ) { session in
-                onSelectSession(session.id)
+            Group {
+                switch layoutVariant {
+                case .table:
+                    SessionTable(
+                        sessions: sessions,
+                        emptyMessage: emptyMessage,
+                        isLoading: isLoading
+                    ) { session in
+                        onSelectSession(session.id)
+                    }
+                case .cards:
+                    SessionCards(sessions: sessions) { session in
+                        onSelectSession(session.id)
+                    }
+                case .feed:
+                    SessionFeed(groups: feedGroups) { session in
+                        onSelectSession(session.id)
+                    }
+                }
             }
+            .id(layoutVariant)
+            .transition(.opacity)
+        }
+        .animation(.easeInOut(duration: 0.08), value: layoutVariant)
+    }
+
+    private var feedGroups: [(day: String, sessions: [SessionListItem])] {
+        guard !sessions.isEmpty else {
+            return [(day: "Today", sessions: [])]
+        }
+
+        sessions.reduce(into: [(day: String, sessions: [SessionListItem])]()) { groups, session in
+            let day = feedDay(for: session)
+            if let index = groups.firstIndex(where: { $0.day == day }) {
+                groups[index].sessions.append(session)
+            } else {
+                groups.append((day: day, sessions: [session]))
+            }
+        }
+    }
+
+    private func feedDay(for session: SessionListItem) -> String {
+        switch session.when {
+        case "Yesterday":
+            return "Yesterday"
+        case let value where value.count == 3:
+            return value
+        default:
+            return "Today"
         }
     }
 }

@@ -84,7 +84,22 @@ enum LayoutVariant: String, CaseIterable, Identifiable {
 
 @Observable
 final class LayoutVariantStore {
-    var selected: LayoutVariant = .table
+    private enum Storage {
+        static let key = "dev.iter.dashboard.layoutVariant"
+    }
+
+    private let defaults: UserDefaults
+
+    var selected: LayoutVariant {
+        didSet {
+            defaults.set(selected.rawValue, forKey: Storage.key)
+        }
+    }
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        selected = defaults.string(forKey: Storage.key).flatMap(LayoutVariant.init(rawValue:)) ?? .table
+    }
 }
 
 struct WorkspaceView: View {
@@ -765,6 +780,7 @@ private struct MainPaneView: View {
         if route.matchesTopLevel(.me) {
             DashboardMeView(
                 store: dashboardMeStore,
+                layoutVariant: layoutVariant,
                 onSelectSession: { id in onNavigate(.sessionDetail(id: id)) },
                 onViewAll: { onNavigate(.sessions) }
             )

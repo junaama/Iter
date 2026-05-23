@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SessionCards: View {
     let sessions: [SessionListItem]
+    var onSelect: (SessionListItem) -> Void = { _ in }
 
     private let columns = [
         GridItem(.adaptive(minimum: IterSpacing.cardGridMin), spacing: 10)
@@ -13,7 +14,9 @@ struct SessionCards: View {
                 SessionCardEmpty()
             } else {
                 ForEach(sessions) { session in
-                    SessionCard(session: session)
+                    SessionCard(session: session) {
+                        onSelect(session)
+                    }
                 }
             }
         }
@@ -24,45 +27,50 @@ private struct SessionCard: View {
     @Environment(\.colorScheme) private var colorScheme
 
     let session: SessionListItem
+    let onSelect: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: IterSpacing.gapSmall) {
-            HStack(spacing: IterSpacing.gapSmall) {
-                Text(verbatim: session.repo)
-                    .font(IterFont.monoLabel)
-                    .foregroundStyle(Color.iterTextSecondary(for: colorScheme))
-                    .lineLimit(1)
+        Button(action: onSelect) {
+            VStack(alignment: .leading, spacing: IterSpacing.gapSmall) {
+                HStack(spacing: IterSpacing.gapSmall) {
+                    Text(verbatim: session.repo)
+                        .font(IterFont.monoLabel)
+                        .foregroundStyle(Color.iterTextSecondary(for: colorScheme))
+                        .lineLimit(1)
 
-                Spacer()
-                Score(value: session.score)
+                    Spacer()
+                    Score(value: session.score)
+                }
+
+                Text(verbatim: session.task)
+                    .font(IterFont.sansCardTitle)
+                    .foregroundStyle(Color.iterTextPrimary(for: colorScheme))
+                    .lineLimit(2)
+
+                HStack(spacing: 10) {
+                    Harness(id: session.harness)
+                    Text(verbatim: session.duration)
+                    Text(verbatim: session.tools)
+                    Text(verbatim: session.accepted)
+                }
+                .font(IterFont.monoLabel)
+                .foregroundStyle(Color.iterTextTertiary(for: colorScheme))
+
+                Sparkline(values: session.sparkline, tint: session.harness.tint.color, height: 14, barWidth: 4)
+
+                HStack {
+                    StatusChip(status: session.status)
+                    Spacer()
+                    Text(verbatim: session.relativeTime)
+                        .font(IterFont.monoSmall)
+                        .foregroundStyle(Color.iterTextTertiary(for: colorScheme))
+                }
             }
-
-            Text(verbatim: session.task)
-                .font(IterFont.sansCardTitle)
-                .foregroundStyle(Color.iterTextPrimary(for: colorScheme))
-                .lineLimit(2)
-
-            HStack(spacing: 10) {
-                Harness(id: session.harness)
-                Text(verbatim: session.duration)
-                Text(verbatim: session.tools)
-                Text(verbatim: session.accepted)
-            }
-            .font(IterFont.monoLabel)
-            .foregroundStyle(Color.iterTextTertiary(for: colorScheme))
-
-            Sparkline(values: session.sparkline, tint: session.harness.tint.color, height: 14, barWidth: 4)
-
-            HStack {
-                StatusChip(status: session.status)
-                Spacer()
-                Text(verbatim: session.relativeTime)
-                    .font(IterFont.monoSmall)
-                    .foregroundStyle(Color.iterTextTertiary(for: colorScheme))
-            }
+            .padding(IterSpacing.cardPadding)
+            .frame(maxWidth: .infinity, minHeight: 122, alignment: .topLeading)
+            .contentShape(.rect)
         }
-        .padding(IterSpacing.cardPadding)
-        .frame(maxWidth: .infinity, minHeight: 122, alignment: .topLeading)
+        .buttonStyle(.plain)
         .background(Color.iterPanel(for: colorScheme))
         .clipShape(.rect(cornerRadius: IterRadius.card))
         .overlay {

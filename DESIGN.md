@@ -215,7 +215,7 @@ From the chat transcript: composite score is **0–100, derived from `tests_pass
 
 ## Tweaks panel (developer-mode toggle, not shipped UI)
 
-The prototype's tweaks panel exposed: dark mode, accent swatch (4 options), layout variant, jump-to-view buttons. **Only dark mode persists into v1**; the other three were prototype-time exploration. Accent stays locked at coral.
+The prototype's tweaks panel exposed: dark mode, accent swatch (4 options), layout variant, jump-to-view buttons. **Dark mode and layout variant persist into v1**; accent swatches and jump-to-view buttons were prototype-time exploration. Accent stays locked at coral.
 
 ## Reinforced product rules
 
