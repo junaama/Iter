@@ -417,7 +417,7 @@ private struct SidebarView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            WorkspaceSwitcherView()
+            WorkspaceSwitcherView(accountLabel: sidebarAccountLabel)
                 .padding(.horizontal, IterSpacing.gapSmall)
                 .padding(.top, IterSpacing.gapSmall)
                 .padding(.bottom, IterSpacing.gapMedium)
@@ -468,6 +468,15 @@ private struct SidebarView: View {
         }
     }
 
+    private var sidebarAccountLabel: String? {
+        guard let user = dashboardMeStore.dashboard?.user else { return nil }
+        let displayName = user.displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !displayName.isEmpty { return displayName }
+
+        let email = user.email.trimmingCharacters(in: .whitespacesAndNewlines)
+        return email.isEmpty ? nil : email
+    }
+
     private static func sessionTitle(for session: DashboardRecentSession) -> String {
         let trimmed = session.redactedPromptPreview.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty { return "Session \(session.id.prefix(8))" }
@@ -484,6 +493,8 @@ private struct WorkspaceSwitcherView: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(SessionStore.self) private var sessionStore
     @Environment(WorkspaceRouter.self) private var router
+
+    let accountLabel: String?
 
     var body: some View {
         Menu {
@@ -531,20 +542,26 @@ private struct WorkspaceSwitcherView: View {
                     .foregroundStyle(Color.iterTextTertiary(for: colorScheme))
                     .accessibilityHidden(true)
             }
-            .frame(height: 36)
+            .frame(maxWidth: .infinity, minHeight: 36, alignment: .leading)
+            .padding(.horizontal, 2)
             .contentShape(.rect)
         }
-        .menuStyle(.borderlessButton)
         .buttonStyle(.plain)
         .accessibilityLabel("Profile menu")
     }
 
     private var identityLabel: String {
-        guard let displayName = sessionStore.displayName?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !displayName.isEmpty else {
-            return "signed in"
+        if let accountLabel = cleanLabel(accountLabel) {
+            return accountLabel
         }
-        return displayName
+        if let displayName = cleanLabel(sessionStore.displayName) {
+            return displayName
+        }
+        return "Account"
+    }
+
+    private func cleanLabel(_ label: String?) -> String? {
+        SessionStore.safeAccountLabel(label)
     }
 }
 

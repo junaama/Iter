@@ -151,7 +151,9 @@ final class SessionStore {
         userId = accessClaims.subject
         role = accessClaims.roles.first
         expiresAt = accessClaims.expiresAt
-        displayName = accessClaims.displayName ?? idClaims?.displayName ?? Self.emailLikeSubject(accessClaims.subject)
+        displayName = Self.safeAccountLabel(accessClaims.displayName)
+            ?? Self.safeAccountLabel(idClaims?.displayName)
+            ?? Self.safeAccountLabel(accessClaims.subject)
         status = .signedIn
         lastError = nil
         scheduleRefresh()
@@ -180,8 +182,34 @@ final class SessionStore {
         self.status = status
     }
 
-    private static func emailLikeSubject(_ subject: String) -> String? {
-        subject.contains("@") ? subject : nil
+    static func safeAccountLabel(_ label: String?) -> String? {
+        guard let trimmed = label?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !trimmed.isEmpty else {
+            return nil
+        }
+        if trimmed.contains("@") {
+            return trimmed
+        }
+        if isOpaqueIdentifier(trimmed) {
+            return nil
+        }
+        return trimmed
+    }
+
+    private static func isOpaqueIdentifier(_ label: String) -> Bool {
+        let uuidPattern = #"^[0-9A-Fa-f]{8}-"# +
+            #"[0-9A-Fa-f]{4}-"# +
+            #"[0-9A-Fa-f]{4}-"# +
+            #"[0-9A-Fa-f]{4}-"# +
+            #"[0-9A-Fa-f]{12}$"#
+        if label.range(of: uuidPattern, options: .regularExpression) != nil {
+            return true
+        }
+        let workOSUserPattern = #"^user_[A-Za-z0-9]+$"#
+        if label.range(of: workOSUserPattern, options: .regularExpression) != nil {
+            return true
+        }
+        return false
     }
 }
 
