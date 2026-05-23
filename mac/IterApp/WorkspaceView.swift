@@ -53,6 +53,15 @@ enum Route: Hashable {
         }
     }
 
+    var detailBackRoute: Route {
+        switch self {
+        case .me, .team, .sessions:
+            return self
+        default:
+            return .sessions
+        }
+    }
+
     func matchesTopLevel(_ candidate: Route) -> Bool {
         switch (self, candidate) {
         case (.me, .me), (.team, .team), (.sessions, .sessions), (.stack, .stack):
@@ -110,6 +119,7 @@ struct WorkspaceView: View {
     @State private var layoutStore = LayoutVariantStore()
     @State private var dashboardMeStore = DashboardMeStore()
     @State private var stackStore = StackStore()
+    @State private var previousListRoute: Route = .me
     @State private var searchText = ""
     @State private var showsSearchPopover = false
     @FocusState private var searchFocused: Bool
@@ -128,12 +138,18 @@ struct WorkspaceView: View {
                 )
 
                 HStack(spacing: 0) {
-                    SidebarView(route: $route, stackStore: stackStore)
+                    SidebarView(route: $route, stackStore: stackStore) { route in
+                        if case .sessionDetail = route {
+                            previousListRoute = self.route.detailBackRoute
+                        }
+                        self.route = route
+                    }
 
                     VStack(spacing: 0) {
                         SubbarView(
                             layoutStore: layoutStore,
-                            route: route,
+                            route: $route,
+                            previousListRoute: previousListRoute,
                             isDashboardRefreshing: dashboardMeStore.isLoading
                         ) {
                             Task { await dashboardMeStore.load(forceRefresh: true) }
@@ -146,6 +162,9 @@ struct WorkspaceView: View {
                                 dashboardMeStore: dashboardMeStore,
                                 stackStore: stackStore
                             ) { route in
+                                if case .sessionDetail = route {
+                                    previousListRoute = self.route.detailBackRoute
+                                }
                                 self.route = route
                             }
 
@@ -360,6 +379,7 @@ private struct SidebarView: View {
     @Environment(DaemonClient.self) private var daemonClient
     @Binding var route: Route
     let stackStore: StackStore
+    let onNavigate: (Route) -> Void
 
     private let navItems: [SidebarNavItem] = [
         SidebarNavItem(route: .me, title: "Me", symbol: "person", count: "47"),
@@ -378,7 +398,7 @@ private struct SidebarView: View {
             VStack(spacing: 2) {
                 ForEach(navItems) { item in
                     SidebarNavButton(item: item, isActive: route.matchesTopLevel(item.route)) {
-                        route = item.route
+                        onNavigate(item.route)
                     }
                 }
             }
@@ -396,13 +416,13 @@ private struct SidebarView: View {
 
             VStack(spacing: 2) {
                 RecentSessionButton(title: "Backpressure session", tint: .codex) {
-                    route = .sessionDetail(id: "s_8f21")
+                    onNavigate(.sessionDetail(id: "11111111-1111-4111-8111-111111111111"))
                 }
                 RecentSessionButton(title: "Dashboard shell polish", tint: .claudeCode) {
-                    route = .sessionDetail(id: "s_42ac")
+                    onNavigate(.sessionDetail(id: "22222222-2222-4222-8222-222222222222"))
                 }
                 RecentSessionButton(title: "Webhook verifier", tint: .opencode) {
-                    route = .sessionDetail(id: "s_19bf")
+                    onNavigate(.sessionDetail(id: "33333333-3333-4333-8333-333333333333"))
                 }
             }
             .padding(.horizontal, 6)
@@ -642,30 +662,54 @@ private struct SubbarView: View {
     @Environment(\.colorScheme) private var colorScheme
     @Bindable var layoutStore: LayoutVariantStore
 
-    let route: Route
+    @Binding var route: Route
+    let previousListRoute: Route
     let isDashboardRefreshing: Bool
     let onRefreshDashboard: () -> Void
 
     var body: some View {
         HStack(spacing: IterSpacing.gapLarge) {
-            Text(verbatim: route.breadcrumb)
-                .font(IterFont.monoSmall)
-                .foregroundStyle(Color.iterTextTertiary(for: colorScheme))
-                .lineLimit(1)
+            if case .sessionDetail = route {
+                Button {
+                    route = previousListRoute
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 10, weight: .semibold))
+                            .accessibilityHidden(true)
+                        Text(verbatim: previousListRoute.title)
+                            .font(IterFont.monoSmall)
+                    }
+                    .foregroundStyle(Color.iterTextSecondary(for: colorScheme))
+                }
+                .buttonStyle(.plain)
 
-            HStack(spacing: 2) {
-                TabButton(title: "Me", isActive: route.matchesTopLevel(.me))
-                TabButton(title: "Team", isActive: route.matchesTopLevel(.team))
-                TabButton(title: "Sessions", isActive: route.matchesTopLevel(.sessions))
+                Text(verbatim: route.breadcrumb)
+                    .font(IterFont.monoSmall)
+                    .foregroundStyle(Color.iterTextTertiary(for: colorScheme))
+                    .lineLimit(1)
+
+                Spacer()
+            } else {
+                Text(verbatim: route.breadcrumb)
+                    .font(IterFont.monoSmall)
+                    .foregroundStyle(Color.iterTextTertiary(for: colorScheme))
+                    .lineLimit(1)
+
+                HStack(spacing: 2) {
+                    TabButton(title: "Me", isActive: route.matchesTopLevel(.me))
+                    TabButton(title: "Team", isActive: route.matchesTopLevel(.team))
+                    TabButton(title: "Sessions", isActive: route.matchesTopLevel(.sessions))
+                }
+
+                Spacer()
+
+                if route.matchesTopLevel(.me) {
+                    DashboardRefreshButton(isRefreshing: isDashboardRefreshing, action: onRefreshDashboard)
+                }
+
+                LayoutSegmentedControl(selection: $layoutStore.selected)
             }
-
-            Spacer()
-
-            if route.matchesTopLevel(.me) {
-                DashboardRefreshButton(isRefreshing: isDashboardRefreshing, action: onRefreshDashboard)
-            }
-
-            LayoutSegmentedControl(selection: $layoutStore.selected)
         }
         .frame(height: IterSpacing.subbarHeight)
         .padding(.horizontal, IterSpacing.gapMedium)
@@ -777,7 +821,9 @@ private struct MainPaneView: View {
     let onNavigate: (Route) -> Void
 
     var body: some View {
-        if route.matchesTopLevel(.me) {
+        if case .sessionDetail(let id) = route {
+            SessionDetailView(sessionID: id)
+        } else if route.matchesTopLevel(.me) {
             DashboardMeView(
                 store: dashboardMeStore,
                 layoutVariant: layoutVariant,

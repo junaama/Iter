@@ -155,7 +155,7 @@ struct RailItem: Identifiable {
 enum ComponentPreviewData {
     static let sessions = [
         SessionListItem(
-            id: "s_8f21",
+            id: "11111111-1111-4111-8111-111111111111",
             when: "09:42",
             relativeTime: "3m ago",
             repo: "iter/mac",
@@ -172,7 +172,7 @@ enum ComponentPreviewData {
             isSelected: true
         ),
         SessionListItem(
-            id: "s_42ac",
+            id: "22222222-2222-4222-8222-222222222222",
             when: "08:18",
             relativeTime: "1h ago",
             repo: "api/gateway",
@@ -188,7 +188,7 @@ enum ComponentPreviewData {
             sparkline: [0.5, 0.4, 0.6, 0.5, 0.7]
         ),
         SessionListItem(
-            id: "s_19bf",
+            id: "33333333-3333-4333-8333-333333333333",
             when: "Mon",
             relativeTime: "Yesterday",
             repo: "infra/rls",
