@@ -88,6 +88,42 @@ final class IterHTTPClient {
         try validate(response)
     }
 
+    func lookupTenantDomain(domain: String) async throws -> OnboardingTenantDomainResponse {
+        try await get(
+            path: "v1/onboarding/tenant-domain",
+            queryItems: [
+                URLQueryItem(name: "domain", value: domain)
+            ]
+        )
+    }
+
+    func createWorkspace(name: String) async throws -> OnboardingWorkspaceResponse {
+        struct CreateWorkspaceRequest: Encodable {
+            let name: String
+        }
+
+        let endpoint = baseURL.appendingPathComponent("v1/onboarding/workspace")
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "POST"
+        request.setValue(UUID().uuidString, forHTTPHeaderField: "Idempotency-Key")
+        let response = try await data(for: request, body: try Self.encoder.encode(CreateWorkspaceRequest(name: name)))
+        return try Self.decoder.decode(OnboardingWorkspaceResponse.self, from: response.0)
+    }
+
+    func requestTenantJoin(tenantID: String) async throws -> OnboardingTenantJoinResponse {
+        struct JoinRequest: Encodable {
+            let tenantId: String
+        }
+
+        let endpoint = baseURL.appendingPathComponent("v1/onboarding/tenant-join-requests")
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "POST"
+        request.setValue(UUID().uuidString, forHTTPHeaderField: "Idempotency-Key")
+        let body = try Self.encoder.encode(JoinRequest(tenantId: tenantID))
+        let response = try await data(for: request, body: body)
+        return try Self.decoder.decode(OnboardingTenantJoinResponse.self, from: response.0)
+    }
+
     func data(
         for request: URLRequest,
         method: String? = nil,
@@ -240,6 +276,49 @@ final class IterHTTPClient {
 
 private struct IterAPIErrorEnvelope: Decodable {
     let error: String?
+}
+
+struct OnboardingTenantDomainResponse: Decodable, Equatable {
+    let domain: String
+    let match: OnboardingTenantMatch?
+}
+
+struct OnboardingTenantMatch: Decodable, Equatable {
+    let tenantId: String
+    let name: String
+    let memberCount: Int
+
+    enum CodingKeys: String, CodingKey {
+        case tenantId = "tenant_id"
+        case name
+        case memberCount = "member_count"
+    }
+}
+
+struct OnboardingWorkspaceResponse: Decodable, Equatable {
+    let tenantId: String
+    let name: String
+    let status: String
+
+    enum CodingKeys: String, CodingKey {
+        case tenantId = "tenant_id"
+        case name
+        case status
+    }
+}
+
+struct OnboardingTenantJoinResponse: Decodable, Equatable {
+    let requestId: String
+    let tenantId: String
+    let tenantName: String
+    let status: String
+
+    enum CodingKeys: String, CodingKey {
+        case requestId = "request_id"
+        case tenantId = "tenant_id"
+        case tenantName = "tenant_name"
+        case status
+    }
 }
 
 enum IterHTTPClientError: LocalizedError {

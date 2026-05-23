@@ -43,6 +43,43 @@ This slice requires a backend endpoint to (a) check tenant-by-domain, (b) submit
 - [ ] Wizard does not block on the retro-ingest; user lands on Dashboard — Me immediately
 - [ ] Tenant-by-domain, join-request, and admin-approval REST endpoints documented in `ARCHITECTURE.md` §5 and added to a new follow-up issue if not implemented as part of this slice
 
+## Implementation handoff
+
+Implemented for HITL verification:
+
+- Mac onboarding gate after WorkOS sign-in, before `WorkspaceView`.
+- Accessibility prompt via `AXIsProcessTrustedWithOptions`.
+- Full Disk Access settings deep link and polled harness-directory readability status.
+- `Set up later` degraded path, including daemon capture disable and menubar `capture · disabled` status.
+- Tenant confirmation UI with domain lookup, Join / Skip / Create workspace actions, and waiting-for-admin state.
+- Backend onboarding endpoints:
+  - `GET /v1/onboarding/tenant-domain?domain=...`
+  - `POST /v1/onboarding/workspace`
+  - `POST /v1/onboarding/tenant-join-requests`
+- `contracts.py`, `pkg/contracts/`, and `ARCHITECTURE.md` endpoint docs updated.
+- Follow-up issue added: `issues/082-onboarding-admin-approval-queue.md`.
+
+Verified before handoff:
+
+- `go test ./internal/api/handler ./internal/api ./pkg/contracts`
+- `HEADLESS=1 make mac-dev`
+
+Remaining HITL:
+
+1. Reset local onboarding defaults if the app has already completed onboarding:
+   - `defaults delete dev.iter.IterApp dev.iter.onboarding.completed`
+   - `defaults delete dev.iter.IterApp dev.iter.onboarding.degraded`
+2. Launch the local server, daemon, and Mac app.
+3. Sign in with WorkOS.
+4. On the permissions step, click Accessibility Grant and approve Iter in System Settings.
+5. Click Full Disk Access, add/enable Iter or the local daemon binary as prompted, then relaunch/recheck.
+6. Confirm Continue is disabled until permissions are ready, unless using Set up later.
+7. On the workspace step, test:
+   - no domain match -> Create workspace -> Dashboard opens
+   - domain match -> Join -> waiting-for-admin state
+   - Skip -> Dashboard opens
+8. Complete two-account admin approval only after `issues/082-onboarding-admin-approval-queue.md` is implemented.
+
 ## Blocked by
 
 - Blocked by `issues/066-workos-device-code-signin-keychain.md`

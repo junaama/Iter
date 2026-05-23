@@ -144,18 +144,31 @@ final class DaemonClient {
         }
     }
 
+    func disableAllCapture() async {
+        for harness in HarnessID.allCases {
+            await setCapture(harness, enabled: false)
+        }
+        await refreshCaptureSettings()
+    }
+
     var footerLabel: String {
         if !connected { return "daemon · offline" }
+        if captureDisabled { return "capture · disabled" }
         if status.paused { return "daemon · paused" }
         return status.running ? "daemon · running" : "daemon · starting"
     }
 
     var footerDetail: String {
         if !connected { return "reconnecting" }
+        if captureDisabled { return "permissions skipped" }
         if let lastSessionAt = status.lastSessionAt {
             return "last \(Self.relativeTime(from: lastSessionAt))"
         }
         return "\(status.capturedToday) captured today"
+    }
+
+    private var captureDisabled: Bool {
+        !captureSettings.isEmpty && captureSettings.allSatisfy { !$0.enabled }
     }
 
     private func watchSuggestions() async {

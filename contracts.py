@@ -175,6 +175,54 @@ class AccountDeleteResponse(BaseModel):
 
 
 # ============================================================================
+# Onboarding: permissions + tenant confirmation
+# ============================================================================
+
+class OnboardingTenantDomainHit(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    tenant_id: UUID
+    name: str
+    member_count: int = Field(ge=0)
+
+
+class OnboardingTenantDomainResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    domain: str
+    match: Optional[OnboardingTenantDomainHit] = None
+
+
+class OnboardingWorkspaceRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=120)
+
+
+class OnboardingWorkspaceResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    tenant_id: UUID
+    name: str
+    status: Literal["ready"]
+
+
+class OnboardingTenantJoinRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    tenant_id: UUID
+
+
+class OnboardingTenantJoinResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    request_id: UUID
+    tenant_id: UUID
+    tenant_name: str
+    status: Literal["pending_admin_approval"]
+
+
+# ============================================================================
 # Local daemon IPC
 # ============================================================================
 

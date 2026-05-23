@@ -117,6 +117,9 @@ func NewRouter(deps app.Deps) chi.Router {
 		authed.Delete("/v1/stack/{id}/share/{user_id}", handler.StackUnshareHandler(deps))
 
 		authed.Get("/v1/dashboard/me", handler.DashboardMeHandler(deps))
+		authed.Get("/v1/onboarding/tenant-domain", handler.OnboardingTenantDomainHandler(deps))
+		authed.Post("/v1/onboarding/workspace", handler.OnboardingWorkspaceHandler(deps))
+		authed.Post("/v1/onboarding/tenant-join-requests", handler.OnboardingTenantJoinRequestHandler(deps))
 		authed.Get("/v1/sessions/{id}", handler.SessionDetailHandler(deps))
 		authed.Get("/v1/scores/{session_id}", handler.SessionScoresHandler(deps))
 		authed.Get("/v1/sessions", handler.ListSessionsHandler(deps))

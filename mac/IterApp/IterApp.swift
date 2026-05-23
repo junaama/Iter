@@ -7,6 +7,7 @@ struct IterApp: App {
     @State private var router = WorkspaceRouter()
     @State private var menuBarController = MenuBarController()
     @State private var sessionStore = SessionStore()
+    @State private var onboardingStore = OnboardingStore()
 
     var body: some Scene {
         WindowGroup("iter — Workspace", id: "workspace") {
@@ -15,6 +16,7 @@ struct IterApp: App {
                 .environment(daemonClient)
                 .environment(router)
                 .environment(sessionStore)
+                .environment(onboardingStore)
                 .preferredColorScheme(themeStore.preferredColorScheme)
                 .background {
                     MenuBarInstaller(
@@ -25,6 +27,7 @@ struct IterApp: App {
                 }
                 .task {
                     sessionStore.load()
+                    onboardingStore.load()
                     daemonClient.start()
                 }
         }
