@@ -172,6 +172,9 @@ No GraphQL, no gRPC, no SSE streaming, no public API, no NL search across sessio
 | GET | `/v1/scores/:session_id` | Score detail + rationale. |
 | GET | `/v1/dashboard/me` | Personal dashboard data. |
 | GET | `/v1/dashboard/team` | Team aggregates. |
+| GET | `/v1/onboarding/tenant-domain?domain=...` | First-run tenant discovery by email domain. |
+| POST | `/v1/onboarding/workspace` | Rename the personal tenant minted at sign-in into the user's workspace. |
+| POST | `/v1/onboarding/tenant-join-requests` | Record a pending request to join an existing tenant; admin approval queue is tracked separately. |
 | POST | `/v1/webhooks/github` | GitHub HMAC-verified webhook. |
 | POST | `/v1/webhooks/linear` | Linear signing-secret-verified webhook. |
 
@@ -266,7 +269,7 @@ Circuit breaker on every external call (LLM, embedding, WorkOS, webhook outbound
 
 ### Observability
 - Sentry for app errors. BetterStack for logs, metrics, uptime, status page, on-call.
-- Self-hosted Langfuse on Railway for LLM and agent traces.
+- Self-hosted Langfuse on Railway for LLM and agent traces. The Go binary (`internal/langfuse`) posts one generation observation per provider call to `/api/public/ingestion` via an async, bounded-queue client; emission is non-blocking and fail-safe so an LLM call never waits on Langfuse and never fails because Langfuse is down. Generation events carry tier, provider, model, input/output, token usage, latency, and tenant_id (when the request context carries a principal); failures emit `level: ERROR` with the provider error string as `statusMessage`. Disabled by leaving any of `LANGFUSE_BASE_URL` / `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` unset.
 - Email notifications only at v1.
 - Minimum alerts: `iter suggest` P99 > 1.5s for 5m, error rate > 1% for 5m, scoring batch fails, Postgres connection exhaustion, WS connection count over threshold, trufflehog scan failure rate > 0.1%, **R2 free-tier usage ≥80% on any of {storage, Class A ops, Class B ops}, R2 egress >2× 7-day rolling baseline**.
 

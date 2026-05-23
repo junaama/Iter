@@ -81,7 +81,7 @@ R2_FREE_STORAGE_GB=10
 R2_FREE_CLASS_A_OPS=1000000        # writes, lists, multipart
 R2_FREE_CLASS_B_OPS=10000000       # reads (GET/HEAD)
 R2_USAGE_ALERT_THRESHOLD=0.80      # 80% of any free-tier metric
-CLOUDFLARE_API_TOKEN=...           # read-only token, scoped to R2 + Analytics
+CLOUDFLARE_API_KEY=...           # read-only token, scoped to R2 + Analytics
 
 # Modal
 MODAL_TOKEN_ID=...
@@ -93,9 +93,14 @@ LINEAR_WEBHOOK_SECRET=...
 
 # Observability
 BETTERSTACK_SOURCE_TOKEN=...
-LANGFUSE_PUBLIC_KEY=...
-LANGFUSE_SECRET_KEY=...
-LANGFUSE_HOST=https://langfuse.iter.dev
+# Langfuse self-hosted on Railway — per-env project keys. The Go binary
+# emits one async generation event per LLM provider call via the
+# /api/public/ingestion endpoint. All three vars must be set for tracing
+# to enable; with any one unset, the binary logs
+# "langfuse tracing disabled" at boot and continues without emission.
+LANGFUSE_BASE_URL=https://langfuse-web-dev.up.railway.app   # scheme+host, no trailing slash
+LANGFUSE_PUBLIC_KEY=pk-lf-...
+LANGFUSE_SECRET_KEY=sk-lf-...                              # never log; never echo
 
 # Runtime
 APP_ENV=production
@@ -247,7 +252,7 @@ The archive cron's heartbeat handler queries Cloudflare's Analytics API and emit
 | `r2.class_b_ops_mtd` | Analytics GraphQL `r2OperationsAdaptiveGroups` (GET/HEAD) | 10,000,000 |
 | `r2.egress_gb_24h` | Analytics GraphQL `r2OperationsAdaptiveGroups` (`responseObjectSize`) | no hard cap; anomaly-watched only |
 
-Counters are month-to-date (reset on the 1st UTC). Auth uses `CLOUDFLARE_API_TOKEN` scoped to **Account → R2 → Read** and **Account → Analytics → Read**.
+Counters are month-to-date (reset on the 1st UTC). Auth uses `CLOUDFLARE_API_KEY` scoped to **Account → R2 → Read** and **Account → Analytics → Read**.
 
 ### Alerts (BetterStack)
 
