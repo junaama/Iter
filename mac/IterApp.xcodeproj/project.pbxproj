@@ -31,6 +31,12 @@
 		1A000065000000000000000E /* Sparkline.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A000065000000000000001E /* Sparkline.swift */; };
 		1A000065000000000000000F /* StatusChip.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A000065000000000000001F /* StatusChip.swift */; };
 		1A0000650000000000000010 /* TraceRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000650000000000000020 /* TraceRow.swift */; };
+		1A0000660000000000000001 /* AuthConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000660000000000000011 /* AuthConfiguration.swift */; };
+		1A0000660000000000000002 /* TokenKeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000660000000000000012 /* TokenKeychainStore.swift */; };
+		1A0000660000000000000003 /* WorkOSDeviceAuthClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000660000000000000013 /* WorkOSDeviceAuthClient.swift */; };
+		1A0000660000000000000004 /* SessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000660000000000000014 /* SessionStore.swift */; };
+		1A0000660000000000000005 /* SignInView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000660000000000000015 /* SignInView.swift */; };
+		1A0000660000000000000006 /* IterSessionExchange.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000660000000000000016 /* IterSessionExchange.swift */; };
 		1A0000680000000000000001 /* DaemonClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000680000000000000011 /* DaemonClient.swift */; };
 		1A0000700000000000000001 /* IterHTTPClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000700000000000000011 /* IterHTTPClient.swift */; };
 		1A0000700000000000000002 /* DashboardMeModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000700000000000000012 /* DashboardMeModels.swift */; };
@@ -75,6 +81,12 @@
 		1A000065000000000000001E /* Sparkline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sparkline.swift; sourceTree = "<group>"; };
 		1A000065000000000000001F /* StatusChip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusChip.swift; sourceTree = "<group>"; };
 		1A0000650000000000000020 /* TraceRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TraceRow.swift; sourceTree = "<group>"; };
+		1A0000660000000000000011 /* AuthConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthConfiguration.swift; sourceTree = "<group>"; };
+		1A0000660000000000000012 /* TokenKeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TokenKeychainStore.swift; sourceTree = "<group>"; };
+		1A0000660000000000000013 /* WorkOSDeviceAuthClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkOSDeviceAuthClient.swift; sourceTree = "<group>"; };
+		1A0000660000000000000014 /* SessionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionStore.swift; sourceTree = "<group>"; };
+		1A0000660000000000000015 /* SignInView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SignInView.swift; sourceTree = "<group>"; };
+		1A0000660000000000000016 /* IterSessionExchange.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IterSessionExchange.swift; sourceTree = "<group>"; };
 		1A0000680000000000000011 /* DaemonClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DaemonClient.swift; sourceTree = "<group>"; };
 		1A0000700000000000000011 /* IterHTTPClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IterHTTPClient.swift; sourceTree = "<group>"; };
 		1A0000700000000000000012 /* DashboardMeModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardMeModels.swift; sourceTree = "<group>"; };
@@ -117,9 +129,10 @@
 				1A0000010000000000000011 /* IterApp.swift */,
 				1A0000010000000000000012 /* WorkspaceView.swift */,
 				1A0000010000000000000013 /* ThemeStore.swift */,
-				1A0000690000000000000011 /* WorkspaceRouter.swift */,
 				1A0000720000000000000011 /* SessionDetailClient.swift */,
 				1A0000720000000000000012 /* SessionDetailView.swift */,
+				1A0000690000000000000011 /* WorkspaceRouter.swift */,
+				1A0000660000000000000030 /* Auth */,
 				1A0000700000000000000030 /* API */,
 				1A0000700000000000000031 /* Dashboard */,
 				1A0000680000000000000030 /* Daemon */,
@@ -174,6 +187,19 @@
 				1A0000700000000000000011 /* IterHTTPClient.swift */,
 			);
 			path = API;
+			sourceTree = "<group>";
+		};
+		1A0000660000000000000030 /* Auth */ = {
+			isa = PBXGroup;
+			children = (
+				1A0000660000000000000011 /* AuthConfiguration.swift */,
+				1A0000660000000000000012 /* TokenKeychainStore.swift */,
+				1A0000660000000000000013 /* WorkOSDeviceAuthClient.swift */,
+				1A0000660000000000000014 /* SessionStore.swift */,
+				1A0000660000000000000015 /* SignInView.swift */,
+				1A0000660000000000000016 /* IterSessionExchange.swift */,
+			);
+			path = Auth;
 			sourceTree = "<group>";
 		};
 		1A0000700000000000000031 /* Dashboard */ = {
@@ -330,6 +356,12 @@
 				1A000065000000000000000E /* Sparkline.swift in Sources */,
 				1A000065000000000000000F /* StatusChip.swift in Sources */,
 				1A0000650000000000000010 /* TraceRow.swift in Sources */,
+				1A0000660000000000000001 /* AuthConfiguration.swift in Sources */,
+				1A0000660000000000000002 /* TokenKeychainStore.swift in Sources */,
+				1A0000660000000000000003 /* WorkOSDeviceAuthClient.swift in Sources */,
+				1A0000660000000000000004 /* SessionStore.swift in Sources */,
+				1A0000660000000000000005 /* SignInView.swift in Sources */,
+				1A0000660000000000000006 /* IterSessionExchange.swift in Sources */,
 				1A0000680000000000000001 /* DaemonClient.swift in Sources */,
 				1A0000700000000000000001 /* IterHTTPClient.swift in Sources */,
 				1A0000700000000000000002 /* DashboardMeModels.swift in Sources */,

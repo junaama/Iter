@@ -29,16 +29,19 @@ final class SessionStore {
 
     private let keychain: TokenKeychainStore
     private let authClient: WorkOSDeviceAuthClient
+    private let exchangeClient: IterSessionExchangeClient
     private var refreshTask: Task<Void, Never>?
     private var pollingTask: Task<Void, Never>?
     private var refreshToken: String?
 
     init(
         keychain: TokenKeychainStore = TokenKeychainStore(),
-        authClient: WorkOSDeviceAuthClient = WorkOSDeviceAuthClient()
+        authClient: WorkOSDeviceAuthClient = WorkOSDeviceAuthClient(),
+        exchangeClient: IterSessionExchangeClient = IterSessionExchangeClient()
     ) {
         self.keychain = keychain
         self.authClient = authClient
+        self.exchangeClient = exchangeClient
     }
 
     func load() {
@@ -65,9 +68,9 @@ final class SessionStore {
                 let authorization = try await authClient.authorizeDevice()
                 self.deviceAuthorization = authorization
                 self.status = .polling
-                let tokens = try await authClient.pollForTokens(authorization)
-                sessionLog.info("pollForTokens succeeded; persisting tokens")
-                try self.persistAndApply(tokens)
+                let workosTokens = try await authClient.pollForTokens(authorization)
+                sessionLog.info("pollForTokens succeeded; exchanging for Iter session token")
+                try await self.exchangeAndPersist(workosTokens)
                 self.deviceAuthorization = nil
             } catch {
                 sessionLog.error("sign-in failed at stage=\(String(describing: self.status), privacy: .public) error=\(String(describing: error), privacy: .public)")
@@ -95,10 +98,11 @@ final class SessionStore {
         }
 
         do {
-            let tokens = try await authClient.refresh(refreshToken: refreshToken)
-            try persistAndApply(tokens)
+            let workosTokens = try await authClient.refresh(refreshToken: refreshToken)
+            try await exchangeAndPersist(workosTokens)
             return true
         } catch {
+            sessionLog.error("refresh failed: \(String(describing: error), privacy: .public)")
             lastError = "Session expired, sign in again."
             signOut(expired: true)
             return false
@@ -118,9 +122,17 @@ final class SessionStore {
         clearInMemory(status: expired ? .expired : .signedOut)
     }
 
-    private func persistAndApply(_ response: WorkOSTokenResponse) throws {
+    /// Exchange the just-obtained WorkOS access token for an Iter
+    /// session JWT, then persist the **Iter** JWT as `accessToken` in
+    /// the keychain. The WorkOS `refreshToken` is preserved so the next
+    /// refresh cycle can renew the WorkOS credential and re-exchange.
+    /// The WorkOS access token is intentionally NOT persisted: nothing
+    /// in the app needs it after the exchange — `IterHTTPClient` only
+    /// presents the Iter JWT.
+    private func exchangeAndPersist(_ response: WorkOSTokenResponse) async throws {
+        let iterToken = try await exchangeClient.exchange(workosAccessToken: response.accessToken)
         let tokens = StoredTokens(
-            accessToken: response.accessToken,
+            accessToken: iterToken.accessToken,
             refreshToken: response.refreshToken,
             idToken: response.idToken
         )
