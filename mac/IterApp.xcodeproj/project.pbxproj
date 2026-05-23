@@ -32,6 +32,10 @@
 		1A000065000000000000000F /* StatusChip.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A000065000000000000001F /* StatusChip.swift */; };
 		1A0000650000000000000010 /* TraceRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000650000000000000020 /* TraceRow.swift */; };
 		1A0000680000000000000001 /* DaemonClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000680000000000000011 /* DaemonClient.swift */; };
+		1A0000700000000000000001 /* IterHTTPClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000700000000000000011 /* IterHTTPClient.swift */; };
+		1A0000700000000000000002 /* DashboardMeModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000700000000000000012 /* DashboardMeModels.swift */; };
+		1A0000700000000000000003 /* DashboardMeStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000700000000000000013 /* DashboardMeStore.swift */; };
+		1A0000700000000000000004 /* DashboardMeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000700000000000000014 /* DashboardMeView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -62,6 +66,10 @@
 		1A000065000000000000001F /* StatusChip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusChip.swift; sourceTree = "<group>"; };
 		1A0000650000000000000020 /* TraceRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TraceRow.swift; sourceTree = "<group>"; };
 		1A0000680000000000000011 /* DaemonClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DaemonClient.swift; sourceTree = "<group>"; };
+		1A0000700000000000000011 /* IterHTTPClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IterHTTPClient.swift; sourceTree = "<group>"; };
+		1A0000700000000000000012 /* DashboardMeModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardMeModels.swift; sourceTree = "<group>"; };
+		1A0000700000000000000013 /* DashboardMeStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardMeStore.swift; sourceTree = "<group>"; };
+		1A0000700000000000000014 /* DashboardMeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardMeView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -89,6 +97,8 @@
 				1A0000010000000000000011 /* IterApp.swift */,
 				1A0000010000000000000012 /* WorkspaceView.swift */,
 				1A0000010000000000000013 /* ThemeStore.swift */,
+				1A0000700000000000000030 /* API */,
+				1A0000700000000000000031 /* Dashboard */,
 				1A0000680000000000000030 /* Daemon */,
 				1A0000650000000000000030 /* Components */,
 				1A0000010000000000000032 /* DesignSystem */,
@@ -130,6 +140,24 @@
 				1A0000650000000000000020 /* TraceRow.swift */,
 			);
 			path = Components;
+			sourceTree = "<group>";
+		};
+		1A0000700000000000000030 /* API */ = {
+			isa = PBXGroup;
+			children = (
+				1A0000700000000000000011 /* IterHTTPClient.swift */,
+			);
+			path = API;
+			sourceTree = "<group>";
+		};
+		1A0000700000000000000031 /* Dashboard */ = {
+			isa = PBXGroup;
+			children = (
+				1A0000700000000000000012 /* DashboardMeModels.swift */,
+				1A0000700000000000000013 /* DashboardMeStore.swift */,
+				1A0000700000000000000014 /* DashboardMeView.swift */,
+			);
+			path = Dashboard;
 			sourceTree = "<group>";
 		};
 		1A0000680000000000000030 /* Daemon */ = {
@@ -249,6 +277,10 @@
 				1A000065000000000000000F /* StatusChip.swift in Sources */,
 				1A0000650000000000000010 /* TraceRow.swift in Sources */,
 				1A0000680000000000000001 /* DaemonClient.swift in Sources */,
+				1A0000700000000000000001 /* IterHTTPClient.swift in Sources */,
+				1A0000700000000000000002 /* DashboardMeModels.swift in Sources */,
+				1A0000700000000000000003 /* DashboardMeStore.swift in Sources */,
+				1A0000700000000000000004 /* DashboardMeView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

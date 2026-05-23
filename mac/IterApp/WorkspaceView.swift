@@ -93,6 +93,7 @@ struct WorkspaceView: View {
 
     @State private var route: Route = .me
     @State private var layoutStore = LayoutVariantStore()
+    @State private var dashboardMeStore = DashboardMeStore()
     @State private var searchText = ""
     @State private var showsSearchPopover = false
     @FocusState private var searchFocused: Bool
@@ -114,13 +115,25 @@ struct WorkspaceView: View {
                     SidebarView(route: $route)
 
                     VStack(spacing: 0) {
-                        SubbarView(layoutStore: layoutStore, route: route)
+                        SubbarView(
+                            layoutStore: layoutStore,
+                            route: route,
+                            isDashboardRefreshing: dashboardMeStore.isLoading
+                        ) {
+                            Task { await dashboardMeStore.load(forceRefresh: true) }
+                        }
 
                         HStack(spacing: 0) {
-                            MainPaneView(route: route, layoutVariant: layoutStore.selected)
+                            MainPaneView(
+                                route: route,
+                                layoutVariant: layoutStore.selected,
+                                dashboardMeStore: dashboardMeStore
+                            ) { route in
+                                self.route = route
+                            }
 
                             if route.showsRail {
-                                RightRailView(route: route)
+                                RightRailView(route: route, dashboard: dashboardMeStore.dashboard)
                                     .frame(width: route.railWidth)
                             }
                         }
@@ -608,6 +621,8 @@ private struct SubbarView: View {
     @Bindable var layoutStore: LayoutVariantStore
 
     let route: Route
+    let isDashboardRefreshing: Bool
+    let onRefreshDashboard: () -> Void
 
     var body: some View {
         HStack(spacing: IterSpacing.gapLarge) {
@@ -624,6 +639,10 @@ private struct SubbarView: View {
 
             Spacer()
 
+            if route.matchesTopLevel(.me) {
+                DashboardRefreshButton(isRefreshing: isDashboardRefreshing, action: onRefreshDashboard)
+            }
+
             LayoutSegmentedControl(selection: $layoutStore.selected)
         }
         .frame(height: IterSpacing.subbarHeight)
@@ -632,6 +651,41 @@ private struct SubbarView: View {
         .overlay(alignment: .bottom) {
             DividerLine()
         }
+    }
+}
+
+private struct DashboardRefreshButton: View {
+    @Environment(\.colorScheme) private var colorScheme
+
+    let isRefreshing: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 5) {
+                Image(systemName: "arrow.clockwise")
+                    .font(.system(size: 10.5, weight: .semibold))
+                    .accessibilityHidden(true)
+
+                Text(verbatim: isRefreshing ? "Refreshing" : "Refresh")
+                    .font(IterFont.sansLabel)
+
+                KBD(text: "⌘R")
+            }
+            .foregroundStyle(Color.iterTextSecondary(for: colorScheme))
+            .padding(.horizontal, 8)
+            .frame(height: 22)
+            .background(Color.iterPanel(for: colorScheme))
+            .clipShape(.rect(cornerRadius: IterRadius.button))
+            .overlay {
+                RoundedRectangle(cornerRadius: IterRadius.button)
+                    .stroke(Color.iterBorder(for: colorScheme), lineWidth: 1)
+            }
+        }
+        .buttonStyle(.plain)
+        .disabled(isRefreshing)
+        .keyboardShortcut("r", modifiers: .command)
+        .accessibilityLabel("Refresh dashboard")
     }
 }
 
@@ -696,8 +750,22 @@ private struct MainPaneView: View {
 
     let route: Route
     let layoutVariant: LayoutVariant
+    let dashboardMeStore: DashboardMeStore
+    let onNavigate: (Route) -> Void
 
     var body: some View {
+        if route.matchesTopLevel(.me) {
+            DashboardMeView(
+                store: dashboardMeStore,
+                onSelectSession: { id in onNavigate(.sessionDetail(id: id)) },
+                onViewAll: { onNavigate(.sessions) }
+            )
+        } else {
+            stubView
+        }
+    }
+
+    private var stubView: some View {
         VStack(alignment: .leading, spacing: IterSpacing.gapMedium) {
             Text(verbatim: route.title)
                 .font(IterFont.sansKPIValue)
@@ -736,15 +804,20 @@ private struct RightRailView: View {
     @Environment(\.colorScheme) private var colorScheme
 
     let route: Route
+    let dashboard: DashboardMeResponse?
 
     var body: some View {
         VStack(alignment: .leading, spacing: IterSpacing.gapMedium) {
-            RailCardView(title: "Refinements", count: "3", bodyText: "Prompt improvements you contributed.")
-            RailCardView(
-                title: route.title == "Team" ? "Active now" : "Suggestions waiting",
-                count: route.title == "Team" ? "4" : "2",
-                bodyText: "Contextual rail cards arrive in later data slices."
-            )
+            if route.matchesTopLevel(.me) {
+                MeRailCards(dashboard: dashboard)
+            } else {
+                RailCardView(title: "Refinements", count: "3", bodyText: "Prompt improvements you contributed.")
+                RailCardView(
+                    title: route.title == "Team" ? "Active now" : "Suggestions waiting",
+                    count: route.title == "Team" ? "4" : "2",
+                    bodyText: "Contextual rail cards arrive in later data slices."
+                )
+            }
             Spacer()
         }
         .padding(IterSpacing.gapMedium)
@@ -753,6 +826,57 @@ private struct RightRailView: View {
         .overlay(alignment: .leading) {
             DividerLine(axis: .vertical)
         }
+    }
+}
+
+private struct MeRailCards: View {
+    let dashboard: DashboardMeResponse?
+
+    var body: some View {
+        RailCard(
+            title: "Refinements you contributed",
+            count: "\(max(1, dashboard?.recentSessions.filter { ($0.compositeScore ?? 0) >= 0.7 }.count ?? 0))",
+            items: [
+                RailItem(
+                    title: "Prompt context accepted",
+                    metadata: "last 30d · weighted into your score",
+                    primaryAction: nil,
+                    secondaryAction: nil
+                )
+            ]
+        )
+
+        RailCard(
+            title: "Suggestions waiting",
+            count: "2",
+            items: [
+                RailItem(
+                    title: "Attach stack notes to next prompt",
+                    metadata: "iter/mac · ready",
+                    primaryAction: "Copy to clipboard",
+                    secondaryAction: "Dismiss"
+                ),
+                RailItem(
+                    title: "Mention migration verifier",
+                    metadata: "api · queued",
+                    primaryAction: "Copy to clipboard",
+                    secondaryAction: nil
+                )
+            ]
+        )
+
+        RailCard(
+            title: "Active stack",
+            count: "4",
+            items: [
+                RailItem(
+                    title: "Codex · OpenCode · SwiftUI",
+                    metadata: "2 skills · docs pinned",
+                    primaryAction: nil,
+                    secondaryAction: nil
+                )
+            ]
+        )
     }
 }
 
