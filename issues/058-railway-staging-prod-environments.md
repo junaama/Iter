@@ -68,3 +68,14 @@ Partially completed and blocked on missing production-grade secrets/HITL provide
 Remaining blocker:
 
 - `staging` and `production` still lack production-grade values for LLM provider keys, Voyage, Modal, webhook signing secrets, BetterStack, and Langfuse keys. The issue explicitly disallows inventing production/staging secrets, so this should be finished by a HITL operator or a worker with those secrets available.
+
+## Worker reassessment — 2026-05-22
+
+Rechecked with authenticated Railway CLI without printing secret values:
+
+- `railway whoami` succeeds for the authenticated account.
+- `iter-server` in `dev` has the full required key set present.
+- `iter-server` in both `staging` and `production` still lacks these required production-grade variables: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_AI_API_KEY`, `TOGETHER_API_KEY`, `VOYAGE_API_KEY`, `MODAL_TOKEN_ID`, `MODAL_TOKEN_SECRET`, `GITHUB_WEBHOOK_SECRET`, `LINEAR_WEBHOOK_SECRET`, `BETTERSTACK_SOURCE_TOKEN`, `LANGFUSE_PUBLIC_KEY`, and `LANGFUSE_SECRET_KEY`.
+- Local `.env` exposes provider/Voyage key names, but not the full missing staging/production set, and this worker did not validate or promote any local value as production-grade.
+
+Still blocked: provide production-grade staging and production values for every missing variable above, then rerun the acceptance checks without logging secret values. No placeholder production secrets were invented.
