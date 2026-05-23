@@ -11,19 +11,20 @@ import (
 )
 
 const (
-	StreamPrefix   = "ingest:queue:"
-	ConsumerGroup  = "ingest-consumers"
-	EmbedQueue     = "embed:queue"
-	MessageField   = "message"
-	RetriesField   = "retries"
-	DefaultWorkers = 4
-	MaxRetries     = 5
-	claimMinIdle   = 30 * time.Second
-	readBlock      = time.Second
-	readBatchSize  = 8
-	defaultHarness = "unknown"
-	defaultModel   = "unknown"
-	defaultPrompt  = "[prompt unavailable]"
+	StreamPrefix            = "ingest:queue:"
+	ConsumerGroup           = "ingest-consumers"
+	EmbedQueue              = "embed:queue"
+	MessageField            = "message"
+	RetriesField            = "retries"
+	DefaultWorkers          = 4
+	MaxRetries              = 5
+	claimMinIdle            = 30 * time.Second
+	readBlock               = time.Second
+	readBatchSize           = 8
+	defaultHarness          = "unknown"
+	defaultModel            = "unknown"
+	defaultPrompt           = "[prompt unavailable]"
+	streamDiscoveryInterval = 5 * time.Second
 )
 
 // QueuedEvent is the Redis Stream payload emitted by the WS handler and

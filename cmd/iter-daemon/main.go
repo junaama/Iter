@@ -21,7 +21,7 @@ func main() {
 	appVersion := flag.String("app-version", os.Getenv("ITER_APP_VERSION"), "expected Mac app version for major-version guard")
 	apiBaseURL := flag.String("api-base-url", getenv("ITER_API_BASE_URL", "http://127.0.0.1:8080"), "Iter API base URL used to derive /v1/ws")
 	wsURL := flag.String("ws-url", os.Getenv("ITER_WS_URL"), "Iter WebSocket URL; overrides api-base-url")
-	apiToken := flag.String("api-token", defaultAPIToken(), "Iter session JWT for daemon ingest")
+	apiToken := flag.String("api-token", os.Getenv("ITER_API_TOKEN"), "Iter session JWT for daemon ingest")
 	captureDirs := flag.String("capture-dirs", os.Getenv("ITER_CAPTURE_DIRS"), "capture roots as harness=path entries separated by PATHLISTSEP")
 	captureWAL := flag.String("capture-wal", getenv("ITER_CAPTURE_WAL_PATH", daemon.DefaultCaptureWALPath()), "SQLite WAL path for durable local capture replay")
 	flag.Parse()
@@ -40,6 +40,7 @@ func main() {
 			APIBaseURL: *apiBaseURL,
 			WSEndpoint: *wsURL,
 			APIToken:   *apiToken,
+			TokenFunc:  keychainAPIToken,
 			WALPath:    *captureWAL,
 			Dirs:       dirs,
 		},
@@ -67,10 +68,7 @@ func getenv(key, fallback string) string {
 	return fallback
 }
 
-func defaultAPIToken() string {
-	if value := os.Getenv("ITER_API_TOKEN"); value != "" {
-		return value
-	}
+func keychainAPIToken() string {
 	if runtime.GOOS != "darwin" {
 		return ""
 	}

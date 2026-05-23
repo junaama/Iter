@@ -39,6 +39,7 @@ type CaptureConfig struct {
 	APIBaseURL string
 	WSEndpoint string
 	APIToken   string
+	TokenFunc  func() string
 	WALPath    string
 	Dirs       []HarnessDir
 	Interval   time.Duration
@@ -96,13 +97,13 @@ func NewCaptureRunner(cfg CaptureConfig, state *State, logger *slog.Logger) *Cap
 		cfg:       cfg,
 		state:     state,
 		logger:    logger,
-		publisher: NewWSPublisher(cfg.WSEndpoint, cfg.APIToken, logger, cfg.Now),
+		publisher: NewWSPublisher(cfg.WSEndpoint, cfg.APIToken, cfg.TokenFunc, logger, cfg.Now),
 		seen:      map[string]fileSeen{},
 	}
 }
 
 func (c CaptureConfig) Enabled() bool {
-	return strings.TrimSpace(c.APIToken) != "" && strings.TrimSpace(c.wsEndpoint()) != ""
+	return (strings.TrimSpace(c.APIToken) != "" || c.TokenFunc != nil) && strings.TrimSpace(c.wsEndpoint()) != ""
 }
 
 func (c CaptureConfig) withDefaults() CaptureConfig {

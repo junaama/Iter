@@ -20,11 +20,12 @@ const publishTimeout = 10 * time.Second
 type WSPublisher struct {
 	endpoint string
 	token    string
+	tokenFn  func() string
 	logger   *slog.Logger
 	now      func() time.Time
 }
 
-func NewWSPublisher(endpoint, token string, logger *slog.Logger, now func() time.Time) *WSPublisher {
+func NewWSPublisher(endpoint, token string, tokenFn func() string, logger *slog.Logger, now func() time.Time) *WSPublisher {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -34,6 +35,7 @@ func NewWSPublisher(endpoint, token string, logger *slog.Logger, now func() time
 	return &WSPublisher{
 		endpoint: strings.TrimSpace(endpoint),
 		token:    strings.TrimSpace(token),
+		tokenFn:  tokenFn,
 		logger:   logger,
 		now:      now,
 	}
@@ -43,14 +45,18 @@ func (p *WSPublisher) Publish(ctx context.Context, events []CaptureEvent) error 
 	if len(events) == 0 {
 		return nil
 	}
-	if p.endpoint == "" || p.token == "" {
-		return errors.New("websocket endpoint and token are required")
+	if p.endpoint == "" {
+		return errors.New("websocket endpoint is required")
+	}
+	token := p.tokenValue()
+	if token == "" {
+		return errors.New("websocket token is required")
 	}
 	ctx, cancel := context.WithTimeout(ctx, publishTimeout)
 	defer cancel()
 	conn, _, err := websocket.Dial(ctx, p.endpoint, &websocket.DialOptions{
 		HTTPHeader: http.Header{
-			"Authorization": []string{"Bearer " + p.token},
+			"Authorization": []string{"Bearer " + token},
 		},
 	})
 	if err != nil {
@@ -88,6 +94,16 @@ func (p *WSPublisher) Publish(ctx context.Context, events []CaptureEvent) error 
 		}
 	}
 	return nil
+}
+
+func (p *WSPublisher) tokenValue() string {
+	if p.token != "" {
+		return p.token
+	}
+	if p.tokenFn == nil {
+		return ""
+	}
+	return strings.TrimSpace(p.tokenFn())
 }
 
 func (p *WSPublisher) waitAck(ctx context.Context, conn *websocket.Conn, msgID uuid.UUID) error {

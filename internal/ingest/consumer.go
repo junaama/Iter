@@ -9,6 +9,7 @@ import (
 	"os"
 	"runtime/debug"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -45,6 +46,8 @@ type Worker struct {
 	count    int
 	streams  []string
 	consumer string
+	mu       sync.Mutex
+	started  map[string]struct{}
 }
 
 func NewWorker(cfg WorkerConfig) (*Worker, error) {
@@ -83,6 +86,7 @@ func NewWorker(cfg WorkerConfig) (*Worker, error) {
 		count:    count,
 		streams:  append([]string(nil), cfg.Streams...),
 		consumer: fmt.Sprintf("%s-%d", host, os.Getpid()),
+		started:  map[string]struct{}{},
 	}, nil
 }
 
@@ -91,29 +95,80 @@ func (w *Worker) ConsumerName() string {
 }
 
 func (w *Worker) Start(ctx context.Context) error {
-	if len(w.streams) == 0 {
-		streams, err := w.discoverStreams(ctx)
-		if err != nil {
-			return err
-		}
-		w.streams = streams
+	if len(w.streams) > 0 {
+		return w.startStreams(ctx, w.streams)
 	}
-	if len(w.streams) == 0 {
-		w.logger.Warn("ingest worker disabled: no tenant streams discovered")
+	if err := w.discoverAndStart(ctx); err != nil {
+		return err
+	}
+	go w.discoveryLoop(ctx)
+	return nil
+}
+
+func (w *Worker) discoveryLoop(ctx context.Context) {
+	ticker := time.NewTicker(streamDiscoveryInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if err := w.discoverAndStart(ctx); err != nil {
+				w.logger.Warn("ingest stream discovery failed", "err", err)
+			}
+		}
+	}
+}
+
+func (w *Worker) discoverAndStart(ctx context.Context) error {
+	streams, err := w.discoverStreams(ctx)
+	if err != nil {
+		return err
+	}
+	if len(streams) == 0 {
+		w.logger.Warn("ingest worker waiting: no tenant streams discovered")
 		return nil
 	}
-	for _, stream := range w.streams {
+	return w.startStreams(ctx, streams)
+}
+
+func (w *Worker) startStreams(ctx context.Context, streams []string) error {
+	for _, stream := range streams {
+		w.mu.Lock()
+		if _, ok := w.started[stream]; ok {
+			w.mu.Unlock()
+			continue
+		}
+		w.mu.Unlock()
 		if err := iredis.EnsureStreamAndGroup(ctx, w.redis, stream, ConsumerGroup); err != nil {
 			return err
 		}
-	}
-	for i := 0; i < w.count; i++ {
-		for _, stream := range w.streams {
+		w.mu.Lock()
+		if _, ok := w.started[stream]; ok {
+			w.mu.Unlock()
+			continue
+		}
+		w.started[stream] = struct{}{}
+		if !containsStream(w.streams, stream) {
+			w.streams = append(w.streams, stream)
+		}
+		w.mu.Unlock()
+		for i := 0; i < w.count; i++ {
 			stream := stream
 			go w.loop(ctx, stream)
 		}
+		w.logger.Info("ingest worker stream started", "stream", stream, "workers", w.count)
 	}
 	return nil
+}
+
+func containsStream(streams []string, stream string) bool {
+	for _, candidate := range streams {
+		if candidate == stream {
+			return true
+		}
+	}
+	return false
 }
 
 func (w *Worker) discoverStreams(ctx context.Context) ([]string, error) {

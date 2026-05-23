@@ -85,6 +85,13 @@ func TestWSHandlerXAddsBeforeAck(t *testing.T) {
 	if n := redisClient.XLen(ctx, StreamName(tenantID)).Val(); n != 1 {
 		t.Fatalf("stream length = %d, want 1", n)
 	}
+	groups, err := redisClient.XInfoGroups(ctx, StreamName(tenantID)).Result()
+	if err != nil {
+		t.Fatalf("XInfoGroups: %v", err)
+	}
+	if len(groups) != 1 || groups[0].Name != ConsumerGroup {
+		t.Fatalf("groups = %#v, want %s", groups, ConsumerGroup)
+	}
 }
 
 func TestWorkerPersistsDedupsAndEnqueuesEmbedding(t *testing.T) {

@@ -36,6 +36,8 @@ Implemented as a polling retro-scan slice, not an fsnotify tailer. Continuous lo
 
 - `cmd/iter-daemon` accepts `ITER_API_BASE_URL`, `ITER_WS_URL`, `ITER_API_TOKEN`, `ITER_CAPTURE_DIRS`, and `ITER_CAPTURE_WAL_PATH`.
 - On macOS, if `ITER_API_TOKEN` is unset, the daemon attempts to read the Swift app's Keychain `access_token`.
+- The daemon re-reads the Keychain token for publish attempts so signing in after daemon startup can unblock WAL replay.
+- The server ingest worker discovers tenant streams after startup, so tenants created after server boot still get consumers.
 - Default capture roots cover Claude Code, Codex, Gemini CLI, OpenCode, and Pi.
 - Capture parsing accepts JSON, JSONL, and NDJSON files, extracts a prompt/model/tools where possible, redacts common token/key patterns, and emits `prompt_sent` plus `session_completed`.
 - Captured events are appended to `~/Library/Application Support/Iter/capture.sqlite` by default, then published over `/v1/ws`; rows are marked sent after ACK only.

@@ -99,7 +99,7 @@ The daemon binds a Unix socket at `~/Library/Application Support/Iter/daemon.soc
 go run ./cmd/iter-daemon
 ```
 
-Leave it running in its own terminal. For local capture, sign in through the Mac app once so the daemon can read the Iter session JWT from Keychain, or export `ITER_API_TOKEN` manually. The daemon polls known harness session directories, stores captured events in a local SQLite WAL, parses JSON/JSONL session files, and publishes normalized `trace.event` messages over `/v1/ws`. WAL rows are marked sent only after the server ACKs the WebSocket frame.
+Leave it running in its own terminal. For local capture, sign in through the Mac app once so the daemon can read the Iter session JWT from Keychain, or export `ITER_API_TOKEN` manually. When `ITER_API_TOKEN` is unset on macOS, the daemon re-reads the app Keychain token on each publish attempt so a sign-in after daemon start can unblock WAL replay. The daemon polls known harness session directories, stores captured events in a local SQLite WAL, parses JSON/JSONL session files, and publishes normalized `trace.event` messages over `/v1/ws`. WAL rows are marked sent only after the server ACKs the WebSocket frame.
 
 To point capture at a fixture or custom harness directory:
 

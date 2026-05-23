@@ -8,6 +8,7 @@ import (
 
 	goredis "github.com/redis/go-redis/v9"
 
+	iredis "github.com/iter-dev/iter/internal/redis"
 	"github.com/iter-dev/iter/internal/ws"
 	"github.com/iter-dev/iter/pkg/contracts"
 )
@@ -62,6 +63,13 @@ func NewWSHandler(client *goredis.Client, logger *slog.Logger, now func() time.T
 			return ws.NewErrorAck(env.MsgID, "handler_error", now())
 		}
 		stream := StreamName(p.TenantID)
+		if err := iredis.EnsureStreamAndGroup(ctx, client, stream, ConsumerGroup); err != nil {
+			logger.LogAttrs(ctx, slog.LevelError, "ingest_ws_group_create_failed",
+				slog.String("stream", stream),
+				slog.String("tenant_id", p.TenantID.String()),
+				slog.String("err", err.Error()))
+			return ws.NewErrorAck(env.MsgID, "ingest_enqueue_failed", now())
+		}
 		if err := client.XAdd(ctx, &goredis.XAddArgs{
 			Stream: stream,
 			Values: map[string]any{
