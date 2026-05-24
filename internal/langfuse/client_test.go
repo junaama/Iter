@@ -2,6 +2,7 @@ package langfuse
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -125,9 +126,9 @@ func TestClientPostsBatchWithBasicAuth(t *testing.T) {
 	if !strings.HasPrefix(authSeen, "Basic ") {
 		t.Errorf("expected Basic auth header, got %q", authSeen)
 	}
-	// Expected b64("pk-test:sk-test") = cGstdGVzdDpzay10ZXN0
-	if authSeen != "Basic cGstdGVzdDpzay10ZXN0" {
-		t.Errorf("auth header mismatch: %q", authSeen)
+	wantAuth := "Basic " + base64.StdEncoding.EncodeToString([]byte("pk-test:sk-test"))
+	if authSeen != wantAuth {
+		t.Errorf("auth header mismatch: got %q, want %q", authSeen, wantAuth)
 	}
 
 	// Batch shape: { "batch": [ { id, type, timestamp, body{...} } ] }
