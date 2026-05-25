@@ -12,7 +12,7 @@ require (
 	github.com/go-chi/chi/v5 v5.2.5
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.9.2
-	github.com/klauspost/compress v1.18.5
+	github.com/klauspost/compress v1.18.6
 	github.com/lestrrat-go/jwx/v2 v2.1.6
 	github.com/oklog/ulid/v2 v2.1.1
 	github.com/pgvector/pgvector-go v0.4.0
